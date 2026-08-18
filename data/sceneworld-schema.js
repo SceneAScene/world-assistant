@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 6;
+export const SCENEWORLD_SCHEMA_VERSION = 7;
 
 function nowIso() {
     return new Date().toISOString();
@@ -41,14 +41,17 @@ function normalizeDetails(items) {
 
 function normalizeWorldFacts(items) {
     if (!Array.isArray(items)) return [];
+    const validPublicity = new Set(['private', 'trace', 'public']);
     return items.map(item => {
         if (typeof item === 'string') {
             return {
                 id: '', key: text(item, 180), value: text(item, 900), validity: 'current',
                 source: 'legacy', evidence: '', sourceMessageId: null,
+                publicity: 'private', publicHint: '',
             };
         }
         if (!item || typeof item !== 'object') return null;
+        const publicityRaw = text(item.publicity, 30).toLowerCase();
         return {
             id: text(item.id, 120),
             key: text(item.key ?? item.subject, 180),
@@ -57,6 +60,8 @@ function normalizeWorldFacts(items) {
             source: text(item.source, 80) || 'simulation',
             evidence: text(item.evidence, 500),
             sourceMessageId: Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null,
+            publicity: validPublicity.has(publicityRaw) ? publicityRaw : 'private',
+            publicHint: text(item.publicHint ?? item.public_hint, 500),
         };
     }).filter(item => item && (item.key || item.value)).slice(-160);
 }
@@ -98,6 +103,107 @@ function normalizeWorldlineMemory(items) {
     }).filter(Boolean).slice(-120);
 }
 
+function normalizeOpinionNews(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const headline = text(item.headline ?? item.title, 180);
+        const summary = text(item.summary ?? item.text, 900);
+        if (!headline || !summary) return null;
+        return {
+            id: text(item.id, 140),
+            category: text(item.category, 60) || '公共消息',
+            headline,
+            summary,
+            source: text(item.source, 120),
+            sourceType: text(item.sourceType, 30) || 'unofficial',
+            scope: text(item.scope, 100),
+            confidence: text(item.confidence, 20) || 'high',
+            relatedFactIds: Array.isArray(item.relatedFactIds) ? item.relatedFactIds.map(v => text(v, 120)).filter(Boolean).slice(0, 12) : [],
+            generatedAt: text(item.generatedAt, 80) || null,
+            canon: item.canon !== false,
+        };
+    }).filter(Boolean).slice(0, 18);
+}
+
+function normalizeOpinionForum(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const title = text(item.title, 180);
+        const summary = text(item.summary ?? item.text, 900);
+        if (!title || !summary) return null;
+        const replies = Array.isArray(item.replies) ? item.replies.map(reply => {
+            if (!reply || typeof reply !== 'object') return null;
+            const body = text(reply.text ?? reply.content, 500);
+            if (!body) return null;
+            return { author: text(reply.author ?? reply.name, 80) || '匿名', text: body };
+        }).filter(Boolean).slice(0, 6) : [];
+        return {
+            id: text(item.id, 140),
+            board: text(item.board, 80) || '公共讨论',
+            title,
+            summary,
+            claimStatus: text(item.claimStatus, 20) || 'mixed',
+            relatedFactIds: Array.isArray(item.relatedFactIds) ? item.relatedFactIds.map(v => text(v, 120)).filter(Boolean).slice(0, 12) : [],
+            replies,
+            generatedAt: text(item.generatedAt, 80) || null,
+            canon: item.canon !== false,
+        };
+    }).filter(Boolean).slice(0, 16);
+}
+
+function normalizeCasualItems(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const kind = text(item.kind, 30) || 'snippet';
+        const title = text(item.title ?? item.headline, 180);
+        const summary = text(item.summary ?? item.text, 900);
+        if (!title || !summary) return null;
+        const replies = Array.isArray(item.replies) ? item.replies.map(reply => {
+            if (!reply || typeof reply !== 'object') return null;
+            const body = text(reply.text ?? reply.content, 500);
+            if (!body) return null;
+            return { author: text(reply.author ?? reply.name, 80) || '匿名', text: body };
+        }).filter(Boolean).slice(0, 6) : [];
+        return {
+            id: text(item.id, 140),
+            kind,
+            category: text(item.category, 60),
+            title,
+            summary,
+            source: text(item.source, 120),
+            board: text(item.board, 80),
+            replies,
+            generatedAt: text(item.generatedAt, 80) || null,
+            canon: false,
+            nonCanon: true,
+        };
+    }).filter(Boolean).slice(0, 18);
+}
+
+function normalizeChronicle(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const title = text(item.title, 180);
+        const summary = text(item.summary ?? item.text, 1200);
+        if (!title && !summary) return null;
+        return {
+            id: text(item.id, 180),
+            title: title || '收藏内容',
+            summary,
+            sourceType: text(item.sourceType, 40),
+            sourceId: text(item.sourceId, 160),
+            sourceLabel: text(item.sourceLabel, 80),
+            canon: item.canon !== false,
+            capturedAt: text(item.capturedAt, 80) || null,
+            sourceGeneratedAt: text(item.sourceGeneratedAt, 80) || null,
+        };
+    }).filter(Boolean).slice(-240);
+}
+
 export function createEmptySceneWorldState() {
     const now = nowIso();
     return {
@@ -123,8 +229,10 @@ export function createEmptySceneWorldState() {
         people: [],
         publicOpinion: {
             updatedAt: null,
+            sourceFingerprint: '',
             news: [],
             forum: [],
+            casualUpdatedAt: null,
             casual: [],
         },
         memory: {
@@ -208,16 +316,18 @@ export function normalizeSceneWorldState(value) {
         }).filter(person => person?.name).slice(0, 180) : [],
         publicOpinion: {
             updatedAt: opinion.updatedAt ?? null,
-            news: Array.isArray(opinion.news) ? opinion.news : [],
-            forum: Array.isArray(opinion.forum) ? opinion.forum : legacyOpinion,
-            casual: Array.isArray(opinion.casual) ? opinion.casual : [],
+            sourceFingerprint: text(opinion.sourceFingerprint, 200),
+            news: normalizeOpinionNews(opinion.news),
+            forum: normalizeOpinionForum(Array.isArray(opinion.forum) ? opinion.forum : legacyOpinion),
+            casualUpdatedAt: opinion.casualUpdatedAt ?? null,
+            casual: normalizeCasualItems(opinion.casual),
         },
         memory: {
             worldline: normalizeWorldlineMemory(
                 Array.isArray(oldMemory.worldline) ? oldMemory.worldline : legacyMemory,
             ),
         },
-        chronicle: Array.isArray(source.chronicle) ? source.chronicle : [],
+        chronicle: normalizeChronicle(source.chronicle),
         assistant: {
             ...empty.assistant,
             ...(source.assistant && typeof source.assistant === 'object' ? source.assistant : {}),

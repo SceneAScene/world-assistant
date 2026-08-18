@@ -21,6 +21,7 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 - 人物没出场不代表人物被删除。只有待结算剧情明确改变某人物时才更新该人物。
 - 人物“知道什么”必须有获知路径；公开存在的信息也不等于所有人物自动知道。
 - 世界事实只保存确定成立、会约束后续一致性的内容；传闻、猜测、角色误解不能升级成事实。
+- 每条世界事实都要判断公开性：private=社会不可见；trace=外界只能看到迹象但不知道真相；public=已经成为公开事实。没有明确公开依据时一律使用 private。
 - 世界线记忆只保存“如果以后忘记会导致明显世界线矛盾”的少量信息，不要把每轮剧情摘要都塞进去。
 - 本次核心推演不生成新闻、论坛、随便逛逛、暗流、回声、伏笔或纪事收藏；这些是独立功能。
 - 输出必须是严格 JSON 对象，不要 Markdown、代码围栏或解释。`;
@@ -59,6 +60,7 @@ function compactState(state) {
             })),
             facts: (state?.world?.facts ?? []).slice(-80).map(fact => ({
                 id: fact?.id ?? '', key: fact?.key ?? '', value: fact?.value ?? '', validity: fact?.validity ?? 'current',
+                publicity: fact?.publicity ?? 'private', publicHint: fact?.publicHint ?? '',
             })),
         },
         peopleIndex,
@@ -98,6 +100,8 @@ export function buildManualSimulationMessages({ state, batch }) {
       "key": "稳定简短的事实键",
       "value": "确定成立、以后忘记可能造成矛盾的客观事实",
       "validity": "current|upcoming|historical|persistent",
+      "publicity": "private|trace|public",
+      "public_hint": "只有 publicity=trace/public 时填写社会能够观察到的公开表象；不得泄露 private 真相",
       "evidence": "支持此事实的待结算正文短证据；纯既有状态延续可为空"
     }
   ],

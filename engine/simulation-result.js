@@ -141,6 +141,8 @@ function normalizeFact(item, source) {
         source: 'simulation',
         evidence: meaningfulText(item.evidence, 500),
         sourceMessageId: source.id,
+        publicity: validChoice(item.publicity, ['private', 'trace', 'public'], 'private'),
+        publicHint: meaningfulText(item.public_hint ?? item.publicHint, 500),
     };
 }
 

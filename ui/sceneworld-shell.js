@@ -22,7 +22,9 @@ const STYLES = `
 .actions{margin-top:12px;display:flex;flex-wrap:wrap;gap:9px}.action{min-height:38px;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 13px;background:rgba(255,255,255,.07);color:inherit;cursor:pointer}.action.primary{background:rgba(126,115,220,.18);border-color:rgba(157,147,240,.42)}.action:disabled{opacity:.42;cursor:not-allowed}.action.danger{border-color:rgba(220,95,95,.45)}
 .note{margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.13);font-size:12px;line-height:1.65;opacity:.76}.note.warning{border:1px solid rgba(224,160,70,.38);background:rgba(224,160,70,.08);opacity:.9}.note.error{border:1px solid rgba(220,95,95,.40);background:rgba(220,95,95,.08);opacity:.92}
 .preview-details{margin-top:10px;border:1px solid rgba(255,255,255,.09);border-radius:10px;overflow:hidden;background:rgba(0,0,0,.12)}.preview-details summary{cursor:pointer;padding:10px 12px;font-size:12px;font-weight:650;list-style-position:inside}.transcript{padding:0 10px 10px;display:grid;gap:8px}.message{padding:10px;border-radius:9px;background:rgba(0,0,0,.18)}.message .who{font-size:11px;opacity:.58;margin-bottom:5px}.message .body{white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.65}
-.item-list{display:grid;gap:9px;margin-top:10px}.item{padding:11px 12px;border-radius:10px;background:rgba(0,0,0,.15)}.item b{display:block;font-size:13px;margin-bottom:4px}.item span,.item p{font-size:12px;line-height:1.55;opacity:.76;margin:0}.meta{font-size:11px;opacity:.56;margin-top:5px}.empty{opacity:.62}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.chip{font-size:11px;padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.07);opacity:.78}
+.item-list{display:grid;gap:9px;margin-top:10px}.item{padding:11px 12px;border-radius:10px;background:rgba(0,0,0,.15)}.item-head{display:flex;align-items:flex-start;gap:8px}.item-head b{flex:1}.item b{display:block;font-size:13px;margin-bottom:4px}.item span,.item p{font-size:12px;line-height:1.55;opacity:.76;margin:0}.meta{font-size:11px;opacity:.56;margin-top:5px}.empty{opacity:.62}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.chip,.badge{font-size:11px;padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.07);opacity:.82}.badge.noncanon{border:1px solid rgba(226,160,80,.35);background:rgba(226,160,80,.08)}
+.replies{margin-top:8px;display:grid;gap:5px}.reply{font-size:11px;line-height:1.55;padding:7px 8px;border-radius:8px;background:rgba(255,255,255,.035);opacity:.78}.reply strong{font-weight:650}
+.star{flex:0 0 auto;border:1px solid rgba(255,255,255,.12);background:transparent;color:inherit;border-radius:8px;min-width:34px;height:30px;cursor:pointer;opacity:.78}.star[disabled]{opacity:.35;cursor:default}.remove-small{border:0;background:transparent;color:inherit;opacity:.6;cursor:pointer;font-size:12px;padding:2px 4px}.section-title{display:flex;align-items:center;gap:8px;margin:14px 0 7px}.section-title h3{margin:0;flex:1}.section-title .count{font-size:11px;opacity:.5}
 .nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;border-top:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.12);padding-bottom:env(safe-area-inset-bottom)}.nav button{min-width:0;min-height:48px;padding:8px 2px;border:0;border-right:1px solid rgba(255,255,255,.06);color:inherit;background:transparent;font-size:clamp(12px,3vw,14px);font-weight:620;cursor:pointer;white-space:nowrap}.nav button:last-child{border-right:0}.nav button[aria-selected="true"]{background:rgba(255,255,255,.09)}
 @media(max-width:620px){.backdrop{padding:0;place-items:stretch}.panel{width:100vw;height:100dvh;min-height:0;border-radius:0;border:0}.header{min-height:52px;padding-left:14px}.title{font-size:17px}.content{padding:14px 12px}.status-grid{grid-template-columns:1fr}.actions{display:grid;grid-template-columns:1fr}.nav button{min-height:52px;font-size:clamp(12px,3.4vw,14px)}}`;
 
@@ -37,6 +39,7 @@ function latestSyncText(state){
     const count=Number(sync.lastProcessedAssistantCount)||1;
     return start===sync.lastProcessedAssistantMessageId?`已结算 AI #${sync.lastProcessedAssistantMessageId}`:`已结算 AI #${start}～#${sync.lastProcessedAssistantMessageId} · ${count} 条`;
 }
+function timeLabel(value){if(!value)return'尚未刷新';try{return new Date(value).toLocaleString()}catch{return String(value)}}
 
 function currentWorldHtml(state) {
     if (!state) return '';
@@ -57,21 +60,21 @@ function pendingPreviewHtml(preview) {
     if(!batch)return '<div class="note">尚未读取待结算剧情。</div>';
     if(batch.anchorChanged)return `<div class="note error">${escapeHtml(batch.anchorReason)}</div>`;
     if(!batch.hasPending)return '<div class="note">当前没有新的 AI 正文需要结算。</div>';
-    const budgetNote=batch.overBudget?`<div class="note warning">待结算正文约 ${batch.characters} 个字符，超过当前单次安全预算 ${batch.limits.maxPendingCharacters}。本阶段不会静默截断，也不会额外调用模型压缩，因此暂时禁止推演。</div>`:'';
+    const budgetNote=batch.overBudget?`<div class="note warning">待结算正文约 ${batch.characters} 个字符，超过当前单次安全预算 ${batch.limits.maxPendingCharacters}。不会静默截断，也不会额外调用模型压缩，因此暂时禁止推演。</div>`:'';
     const previous=Number.isInteger(batch.lastProcessedAssistantMessageId)?`AI #${batch.lastProcessedAssistantMessageId}`:'无（首次结算）';
     return `<div class="status-grid"><div class="status"><b>上次结算</b><span>${previous}</span></div><div class="status"><b>待结算范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>待结算 AI 正文</b><span>${batch.assistantCount} 条</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${budgetNote}<details class="preview-details" open><summary>预览本轮待结算 AI 正文</summary>${transcriptHtml(batch.pendingMessages)}</details>${batch.preContext?.length?`<details class="preview-details"><summary>已结算 AI 前置正文（仅用于承接，不会重复结算）</summary>${transcriptHtml(batch.preContext)}</details>`:''}`;
 }
 
-function homeHtml(version, preview) {
+function homeHtml(version, preview, busy) {
     const info = inspectSceneWorldStorage();
     const state = readSceneWorldState();
     const batch=preview?.batch;
-    const canSimulate=!!batch?.canSimulate;
+    const canSimulate=!!batch?.canSimulate && !busy;
     return `<div class="stack">
-        <div class="card"><h2>2.0 重构 · 阶段 3E：AI-only 连续结算</h2><p>不再只读取最新一条 AI 回复。每次只读取“上次成功结算之后，到当前最新 AI 回复为止”的全部新增 AI 正文。USER 楼层完全不进入事实来源、辅助上下文、字符预算或模型提示词。</p><div class="status-grid"><div class="status"><b>插件</b><span>已就绪 · ${escapeHtml(version)}</span></div><div class="status"><b>sceneworld 数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status"><b>自动推演</b><span>未加载 · 当前仅手动</span></div></div></div>
+        <div class="card"><h2>2.0 重构 · 阶段 4A：手动舆情</h2><p>核心推演继续只结算 AI 正文；舆情已经拆成独立手动任务，不会随世界推演自动生成。</p><div class="status-grid"><div class="status"><b>插件</b><span>已就绪 · ${escapeHtml(version)}</span></div><div class="status"><b>sceneworld 数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status"><b>自动推演</b><span>未加载 · 当前仅手动</span></div></div></div>
         ${currentWorldHtml(state)}
-        <div class="card"><h2>① 读取待结算剧情</h2><p>只在本地读取，不调用模型、不保存数据。只收集 AI 回复；少量已结算 AI 正文仅用于承接，USER 消息完全忽略。</p><div class="actions"><button class="action" type="button" data-action="read-pending">读取待结算剧情</button></div>${pendingPreviewHtml(preview)}</div>
-        <div class="card"><h2>② 手动结算本轮剧情</h2><p>确认后只调用一次当前模型。无论有 1 条还是多条待结算 AI 正文，都只输出这些 AI 正文最终形成的净变化。</p><div class="actions"><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>确认并推演待结算剧情</button>${info.dataExists?'<button class="action danger" type="button" data-action="clear">清理当前聊天 sceneworld 数据</button>':''}</div><div class="note">如果很久没有推演，SceneWorld 会把上次结算后的全部新增 AI 回复一起读取；USER 消息始终跳过。超过安全预算时会明确停止。</div></div>
+        <div class="card"><h2>① 读取待结算剧情</h2><p>只在本地读取，不调用模型、不保存数据。只收集 AI 回复；USER 消息完全忽略。</p><div class="actions"><button class="action" type="button" data-action="read-pending" ${busy?'disabled':''}>读取待结算剧情</button></div>${pendingPreviewHtml(preview)}</div>
+        <div class="card"><h2>② 手动结算本轮剧情</h2><p>确认后只调用一次当前模型，输出这批 AI 正文最终形成的稀疏净变化。</p><div class="actions"><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>确认并推演待结算剧情</button>${info.dataExists?`<button class="action danger" type="button" data-action="clear" ${busy?'disabled':''}>清理当前聊天 sceneworld 数据</button>`:''}</div></div>
     </div>`;
 }
 
@@ -87,37 +90,73 @@ function peopleHtml(state) {
     }).join('')}</div></div></div>`;
 }
 
-function opinionHtml(state) {
+function favorited(state, sourceType, id) {
+    return Array.isArray(state?.chronicle) && state.chronicle.some(item => item?.sourceType === sourceType && item?.sourceId === id);
+}
+function favoriteButton(state, sourceType, id, busy) {
+    const saved = favorited(state, sourceType, id);
+    return `<button class="star" type="button" title="${saved?'已收藏到纪事':'收藏到纪事'}" data-favorite-type="${escapeHtml(sourceType)}" data-favorite-id="${escapeHtml(id)}" ${saved||busy?'disabled':''}>${saved?'★':'☆'}</button>`;
+}
+function repliesHtml(replies) {
+    if (!Array.isArray(replies) || !replies.length) return '';
+    return `<div class="replies">${replies.map(reply=>`<div class="reply"><strong>${escapeHtml(reply.author||'匿名')}</strong>：${escapeHtml(reply.text||'')}</div>`).join('')}</div>`;
+}
+
+function opinionHtml(state, busy) {
     if (!state) return emptySection('舆情');
-    return `<div class="stack"><div class="card"><h2>舆情</h2><h3>新闻</h3><p class="empty">本阶段尚未接入手动舆情生成。</p><h3>论坛</h3><p class="empty">本阶段尚未接入手动舆情生成。</p><h3>随便逛逛</h3><p class="empty">后续作为独立 NON-CANON 功能接入，不影响世界事实。</p></div></div>`;
+    const opinion = state.publicOpinion || {};
+    const facts = Array.isArray(state.world?.facts) ? state.world.facts : [];
+    const publicCount = facts.filter(item => item?.publicity === 'public').length;
+    const traceCount = facts.filter(item => item?.publicity === 'trace').length;
+    const news = Array.isArray(opinion.news) ? opinion.news : [];
+    const forum = Array.isArray(opinion.forum) ? opinion.forum : [];
+    const casual = Array.isArray(opinion.casual) ? opinion.casual : [];
+    const casualNews = casual.filter(item => item.kind === 'news');
+    const casualForum = casual.filter(item => item.kind === 'forum');
+    return `<div class="stack">
+      <div class="card"><h2>舆情</h2><p>新闻与论坛只读取 SceneWorld 中已经标记为 <b>public</b> 或 <b>trace</b> 的公开面。没有值得传播的内容时允许为空；“随便逛逛”是完全独立的 NON-CANON 娱乐沙盒。</p><div class="status-grid"><div class="status"><b>公开事实</b><span>${publicCount} 条 public · ${traceCount} 条 trace</span></div><div class="status"><b>上次正式刷新</b><span>${escapeHtml(timeLabel(opinion.updatedAt))}</span></div></div><div class="actions"><button class="action primary" type="button" data-action="refresh-opinion" ${busy?'disabled':''}>刷新新闻与论坛</button><button class="action" type="button" data-action="refresh-casual" ${busy?'disabled':''}>随便逛逛</button></div><div class="note">新闻只能使用 public 事实；论坛可以围绕 trace 的公开迹象猜测，但程序会硬性阻止新闻引用 trace/private 真相。刷新会替换当前舆情，喜欢的内容可先 ☆ 收藏到纪事。</div></div>
+      <div class="card"><div class="section-title"><h3>新闻</h3><span class="count">${news.length} 条</span></div>${news.length?`<div class="item-list">${news.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.headline)}</b>${favoriteButton(state,'news',item.id,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.category||'公共消息')}</span>${item.source?`<span class="chip">${escapeHtml(item.source)}</span>`:''}</div><p>${escapeHtml(item.summary)}</p>${item.scope?`<div class="meta">范围：${escapeHtml(item.scope)}</div>`:''}</div>`).join('')}</div>`:'<p class="empty">当前没有值得形成新闻的公开事件。</p>'}</div>
+      <div class="card"><div class="section-title"><h3>论坛 / 公共讨论</h3><span class="count">${forum.length} 条</span></div>${forum.length?`<div class="item-list">${forum.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title)}</b>${favoriteButton(state,'forum',item.id,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.board||'公共讨论')}</span><span class="chip">${escapeHtml(item.claimStatus||'mixed')}</span></div><p>${escapeHtml(item.summary)}</p>${repliesHtml(item.replies)}</div>`).join('')}</div>`:'<p class="empty">当前没有值得记录的公共讨论。</p>'}</div>
+      <div class="card"><div class="section-title"><h3>随便逛逛</h3><span class="badge noncanon">NON-CANON</span><span class="count">${casual.length} 条</span></div><p>只提供生活质感，不会反向写入世界事实、人物认知或世界线记忆。上次生成：${escapeHtml(timeLabel(opinion.casualUpdatedAt))}</p>${casual.length?`<div class="item-list">${[...casualNews,...casualForum].map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title)}</b>${favoriteButton(state,'casual',item.id,busy)}</div><div class="chips"><span class="badge noncanon">NON-CANON</span>${item.kind==='forum'?`<span class="chip">${escapeHtml(item.board||'闲聊')}</span>`:`<span class="chip">${escapeHtml(item.category||'日常')}</span>`}</div><p>${escapeHtml(item.summary)}</p>${repliesHtml(item.replies)}</div>`).join('')}</div>`:'<p class="empty">还没有生成“随便逛逛”。</p>'}</div>
+    </div>`;
 }
 
 function memoryHtml(state) {
     if (!state) return emptySection('记忆');
     const items=Array.isArray(state.memory?.worldline)?state.memory.worldline:[];
-    return listSection('世界线记忆', items, item=>({title:item.text||'世界线记忆',body:item.reason||'',meta:item.sourceMessageId===null||item.sourceMessageId===undefined?'':`来源结算至消息 #${item.sourceMessageId}`}), '当前没有需要长期保留的世界线记忆。');
+    return listSection('世界线记忆', items, item=>({title:item.text||'世界线记忆',body:item.reason||'',meta:item.sourceMessageId===null||item.sourceMessageId===undefined?'':`来源结算至 AI #${item.sourceMessageId}`}), '当前没有需要长期保留的世界线记忆。');
 }
 
-function chronicleHtml(state) {
+function chronicleHtml(state, busy) {
     if (!state) return emptySection('纪事');
     const items=Array.isArray(state.chronicle)?[...state.chronicle].reverse():[];
-    return listSection('纪事', items, item=>({title:item.title||'收藏内容',body:[item.time,item.summary||item.text].filter(Boolean).join(' · '),meta:item.sourceType?`来源：${item.sourceType}`:''}), '暂无收藏。后续会支持从新闻、论坛和“随便逛逛”手动收藏到这里。');
+    if(!items.length)return `<div class="stack"><div class="card"><h2>纪事</h2><p class="empty">暂无收藏。新闻、论坛和“随便逛逛”里的 ☆ 可以把喜欢的内容保留下来。</p></div></div>`;
+    return `<div class="stack"><div class="card"><h2>纪事</h2><p>这里是手动收藏，不会因为刷新舆情而消失。NON-CANON 收藏仍然只是灵感，不会自动升级为世界事实。</p><div class="item-list">${items.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title||'收藏内容')}</b><button class="remove-small" type="button" data-remove-chronicle="${escapeHtml(item.id)}" ${busy?'disabled':''}>删除</button></div><div class="chips"><span class="chip">${escapeHtml(item.sourceLabel||item.sourceType||'收藏')}</span>${item.canon===false?'<span class="badge noncanon">NON-CANON</span>':'<span class="chip">CANON 来源</span>'}</div>${item.summary?`<p>${escapeHtml(item.summary)}</p>`:''}<div class="meta">收藏时间：${escapeHtml(timeLabel(item.capturedAt))}</div></div>`).join('')}</div></div></div>`;
 }
 
 function emptySection(title){return`<div class="stack"><div class="card"><h2>${title}</h2><p>当前聊天尚未创建 sceneworld 数据。仅查看页面不会自动创建。</p></div></div>`}
 function listSection(title,items,mapper,emptyText='暂无记录。'){if(!Array.isArray(items)||!items.length)return`<div class="stack"><div class="card"><h2>${title}</h2><p class="empty">${emptyText}</p></div></div>`;return`<div class="stack"><div class="card"><h2>${title}</h2><div class="item-list">${items.map(item=>{const view=mapper(item)||{};return`<div class="item"><b>${escapeHtml(view.title||'')}</b>${view.body?`<p>${escapeHtml(view.body)}</p>`:''}${view.meta?`<div class="meta">${escapeHtml(view.meta)}</div>`:''}</div>`}).join('')}</div></div></div>`}
-function renderTab(tab,version,preview){const state=readSceneWorldState();if(tab==='此刻')return homeHtml(version,preview);if(tab==='人物')return peopleHtml(state);if(tab==='舆情')return opinionHtml(state);if(tab==='记忆')return memoryHtml(state);if(tab==='纪事')return chronicleHtml(state);return emptySection(tab)}
+function renderTab(tab,version,preview,busy){const state=readSceneWorldState();if(tab==='此刻')return homeHtml(version,preview,busy);if(tab==='人物')return peopleHtml(state);if(tab==='舆情')return opinionHtml(state,busy);if(tab==='记忆')return memoryHtml(state);if(tab==='纪事')return chronicleHtml(state,busy);return emptySection(tab)}
 function countReportedChanges(summary){if(!summary)return 0;return (summary.worldPatch?1:0)+(summary.momentsUpsert||0)+(summary.momentsRemove||0)+(summary.facts||0)+(summary.people||0)+(summary.memory||0)}
 
 export function createSceneWorldShell({ version, onClose, actions }) {
     let host=document.getElementById(HOST_ID);if(host)host.remove();host=document.createElement('div');host.id=HOST_ID;const shadow=host.attachShadow({mode:'open'});let activeTab='此刻';let busy=false;let preview=null;
-    const render=()=>{shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop"><section class="panel" role="dialog" aria-modal="true" aria-label="世界动态"><header class="header"><div class="title">世界动态</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${renderTab(activeTab,version,preview)}</main><nav class="nav" aria-label="世界动态栏目">${TABS.map(tab=>`<button type="button" data-tab="${tab}" aria-selected="${tab===activeTab}">${tab}</button>`).join('')}</nav></section></div>`;
-        shadow.querySelector('.close')?.addEventListener('click',()=>onClose?.());shadow.querySelector('.backdrop')?.addEventListener('click',e=>{if(e.target===e.currentTarget)onClose?.()});shadow.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{activeTab=button.dataset.tab||'此刻';render()}));
+    const runBusy=async(task)=>{if(busy)return;busy=true;render();try{return await task()}finally{busy=false;render()}};
+    const render=()=>{
+        shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop"><section class="panel" role="dialog" aria-modal="true" aria-label="世界动态"><header class="header"><div class="title">世界动态</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${renderTab(activeTab,version,preview,busy)}</main><nav class="nav" aria-label="世界动态栏目">${TABS.map(tab=>`<button type="button" data-tab="${tab}" aria-selected="${tab===activeTab}">${tab}</button>`).join('')}</nav></section></div>`;
+        shadow.querySelector('.close')?.addEventListener('click',()=>onClose?.());
+        shadow.querySelector('.backdrop')?.addEventListener('click',e=>{if(e.target===e.currentTarget)onClose?.()});
+        shadow.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{activeTab=button.dataset.tab||'此刻';render()}));
         shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged)notify(batch.anchorReason,'error');else if(!batch?.hasPending)notify('当前没有新的 AI 正文需要结算','info');else if(batch.overBudget)notify('待结算剧情超过当前单次安全预算，请查看界面说明','warning')}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待结算剧情失败：${error?.message||error}`,'error')}render()});
-        shadow.querySelector('[data-action="simulate"]')?.addEventListener('click',async()=>{const batch=preview?.batch;if(busy||!batch?.canSimulate)return;if(!confirm(`将调用一次当前 SillyTavern 模型，结算 #${batch.startId}～#${batch.endId} 共 ${batch.assistantCount} 条 AI 正文。继续吗？`))return;busy=true;try{const result=await actions?.simulatePending?.(batch);preview=actions?.inspectPendingNarrative?.()??preview;const count=countReportedChanges(result?.changeSummary);notify(count?`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`:`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`,'success')}catch(error){console.error('[SceneWorld] pending simulation failed',error);notify(`世界推演失败：${error?.message||error}`,'error')}finally{busy=false;render()}});
-        shadow.querySelector('[data-action="clear"]')?.addEventListener('click',async()=>{if(busy)return;if(!confirm('只删除当前聊天的 chatMetadata.sceneworld 数据。不会删除聊天正文，也不会触碰其他插件数据。确定继续吗？'))return;busy=true;try{const removed=await clearSceneWorldState();preview=actions?.inspectPendingNarrative?.()??null;notify(removed?'当前聊天的 sceneworld 数据已清理':'当前聊天没有 sceneworld 数据','success')}catch(error){console.error('[SceneWorld] clear state failed',error);notify(`清理数据失败：${error?.message||error}`,'error')}finally{busy=false;render()}})
+        shadow.querySelector('[data-action="simulate"]')?.addEventListener('click',()=>runBusy(async()=>{const batch=preview?.batch;if(!batch?.canSimulate)return;if(!confirm(`将调用一次当前 SillyTavern 模型，结算 #${batch.startId}～#${batch.endId} 共 ${batch.assistantCount} 条 AI 正文。继续吗？`))return;try{const result=await actions?.simulatePending?.(batch);preview=actions?.inspectPendingNarrative?.()??preview;const count=countReportedChanges(result?.changeSummary);notify(count?`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`:`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`,'success')}catch(error){console.error('[SceneWorld] pending simulation failed',error);notify(`世界推演失败：${error?.message||error}`,'error')}}));
+        shadow.querySelector('[data-action="refresh-opinion"]')?.addEventListener('click',()=>runBusy(async()=>{try{const info=actions?.inspectPublicOpinion?.();if(info?.sourceCount>0&&!confirm(`将根据当前 ${info.publicCount} 条 public、${info.traceCount} 条 trace 世界事实调用一次模型刷新新闻与论坛。继续吗？`))return;const result=await actions?.refreshPublicOpinion?.();if(!result?.calledModel)notify('当前没有可用于舆情的公开世界变化，新闻与论坛已保持为空','info');else if((result.newsCount||0)+(result.forumCount||0)===0)notify('舆情刷新完成：当前没有值得记录的新闻或公共讨论','success');else notify(`舆情刷新完成：${result.newsCount||0} 条新闻，${result.forumCount||0} 条讨论`,'success')}catch(error){console.error('[SceneWorld] public opinion failed',error);notify(`刷新舆情失败：${error?.message||error}`,'error')}}));
+        shadow.querySelector('[data-action="refresh-casual"]')?.addEventListener('click',()=>runBusy(async()=>{if(!confirm('“随便逛逛”将调用一次模型生成 NON-CANON 生活内容，不会写入世界事实。继续吗？'))return;try{const result=await actions?.refreshCasualOpinion?.();notify(`随便逛逛已更新：${result?.itemCount||0} 条内容`,'success')}catch(error){console.error('[SceneWorld] casual opinion failed',error);notify(`随便逛逛失败：${error?.message||error}`,'error')}}));
+        shadow.querySelectorAll('[data-favorite-type]').forEach(button=>button.addEventListener('click',()=>runBusy(async()=>{try{await actions?.favoriteOpinion?.(button.dataset.favoriteType,button.dataset.favoriteId);notify('已收藏到纪事','success')}catch(error){console.error('[SceneWorld] favorite failed',error);notify(`收藏失败：${error?.message||error}`,'error')}})));
+        shadow.querySelectorAll('[data-remove-chronicle]').forEach(button=>button.addEventListener('click',()=>runBusy(async()=>{try{await actions?.removeChronicle?.(button.dataset.removeChronicle);notify('已从纪事删除','success')}catch(error){console.error('[SceneWorld] chronicle remove failed',error);notify(`删除收藏失败：${error?.message||error}`,'error')}})));
+        shadow.querySelector('[data-action="clear"]')?.addEventListener('click',()=>runBusy(async()=>{if(!confirm('只删除当前聊天的 chatMetadata.sceneworld 数据。不会删除聊天正文，也不会触碰其他插件数据。确定继续吗？'))return;try{const removed=await clearSceneWorldState();preview=actions?.inspectPendingNarrative?.()??null;notify(removed?'当前聊天的 sceneworld 数据已清理':'当前聊天没有 sceneworld 数据','success')}catch(error){console.error('[SceneWorld] clear state failed',error);notify(`清理数据失败：${error?.message||error}`,'error')}}));
     };
-    shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});render();document.body.appendChild(host);return{host,refresh:render,onChatChanged(){preview=null;render()},destroy(){host?.remove()}};
+    shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});
+    render();document.body.appendChild(host);return{host,refresh:render,onChatChanged(){preview=null;render()},destroy(){host?.remove()}};
 }
 
 export function removeSceneWorldShell(){document.getElementById(HOST_ID)?.remove()}

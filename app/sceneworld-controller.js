@@ -3,6 +3,8 @@ import { TaskManager } from './task-manager.js';
 import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
 import { getSceneWorldEventApi } from '../platform/sillytavern.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
+import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshCasualPublicOpinion } from '../services/public-opinion.js';
+import { favoriteOpinionItem, removeChronicleItem } from '../services/chronicle.js';
 import { createSceneWorldShell, removeSceneWorldShell } from '../ui/sceneworld-shell.js';
 
 export function createSceneWorldController({ version }) {
@@ -44,6 +46,11 @@ export function createSceneWorldController({ version }) {
             actions: {
                 inspectPendingNarrative,
                 simulatePending: expectedBatch => tasks.run('manual-simulation', () => simulatePendingNarrative(expectedBatch)),
+                inspectPublicOpinion,
+                refreshPublicOpinion: () => tasks.run('public-opinion', refreshCanonicalPublicOpinion),
+                refreshCasualOpinion: () => tasks.run('public-opinion-sandbox', refreshCasualPublicOpinion),
+                favoriteOpinion: (sourceType, sourceId) => tasks.run(`favorite:${sourceType}:${sourceId}`, () => favoriteOpinionItem(sourceType, sourceId)),
+                removeChronicle: id => tasks.run(`chronicle-remove:${id}`, () => removeChronicleItem(id)),
                 isTaskRunning: key => tasks.isRunning(key),
             },
         });
