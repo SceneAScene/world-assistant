@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 5;
+export const SCENEWORLD_SCHEMA_VERSION = 6;
 
 function nowIso() {
     return new Date().toISOString();
@@ -105,13 +105,13 @@ export function createEmptySceneWorldState() {
         createdAt: now,
         updatedAt: now,
         sync: {
-            lastProcessedMessageId: null,
-            lastProcessedFingerprint: '',
+            lastProcessedAssistantMessageId: null,
+            lastProcessedAssistantFingerprint: '',
             lastProcessedAt: null,
-            lastProcessedRangeStartId: null,
-            lastProcessedMessageCount: 0,
-            lastProcessedRangeFingerprint: '',
-            lastProcessedCharacters: 0,
+            lastProcessedAssistantRangeStartId: null,
+            lastProcessedAssistantCount: 0,
+            lastProcessedAssistantRangeFingerprint: '',
+            lastProcessedAssistantCharacters: 0,
         },
         world: {
             time: null,
@@ -156,10 +156,30 @@ export function normalizeSceneWorldState(value) {
         schemaVersion: SCENEWORLD_SCHEMA_VERSION,
         createdAt: source.createdAt || empty.createdAt,
         updatedAt: source.updatedAt || empty.updatedAt,
-        sync: {
-            ...empty.sync,
-            ...(source.sync && typeof source.sync === 'object' ? source.sync : {}),
-        },
+        sync: (() => {
+            const legacy = source.sync && typeof source.sync === 'object' ? source.sync : {};
+            return {
+                ...empty.sync,
+                lastProcessedAssistantMessageId: Number.isInteger(legacy.lastProcessedAssistantMessageId)
+                    ? legacy.lastProcessedAssistantMessageId
+                    : (Number.isInteger(legacy.lastProcessedMessageId) ? legacy.lastProcessedMessageId : null),
+                lastProcessedAssistantFingerprint: text(
+                    legacy.lastProcessedAssistantFingerprint ?? legacy.lastProcessedFingerprint,
+                    200,
+                ),
+                lastProcessedAt: legacy.lastProcessedAt ?? null,
+                lastProcessedAssistantRangeStartId: Number.isInteger(legacy.lastProcessedAssistantRangeStartId)
+                    ? legacy.lastProcessedAssistantRangeStartId
+                    : (Number.isInteger(legacy.lastProcessedMessageId) ? legacy.lastProcessedMessageId : null),
+                lastProcessedAssistantCount: Number.isFinite(legacy.lastProcessedAssistantCount)
+                    ? Math.max(0, Math.trunc(legacy.lastProcessedAssistantCount))
+                    : (Number.isInteger(legacy.lastProcessedMessageId) ? 1 : 0),
+                lastProcessedAssistantRangeFingerprint: text(legacy.lastProcessedAssistantRangeFingerprint, 200),
+                lastProcessedAssistantCharacters: Number.isFinite(legacy.lastProcessedAssistantCharacters)
+                    ? Math.max(0, Math.trunc(legacy.lastProcessedAssistantCharacters))
+                    : 0,
+            };
+        })(),
         world: {
             ...empty.world,
             ...(source.world && typeof source.world === 'object' ? {

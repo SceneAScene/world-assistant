@@ -12,7 +12,7 @@ function batchSource(batch) {
         startId: batch.startId,
         endId: batch.endId,
         rangeFingerprint: batch.rangeFingerprint,
-        messageCount: batch.messageCount,
+        assistantCount: batch.assistantCount,
         characters: batch.characters,
     });
 }

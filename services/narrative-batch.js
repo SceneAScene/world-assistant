@@ -18,18 +18,18 @@ export function fingerprintText(text) {
     return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}-${source.length}`;
 }
 
-function isNarrativeMessage(message) {
+function isAssistantNarrativeMessage(message) {
     if (!message || typeof message !== 'object') return false;
-    if (message.is_system) return false;
+    if (message.is_system || message.is_user) return false;
     return cleanText(message.mes).length > 0;
 }
 
-function normalizeMessage(message, id) {
+function normalizeAssistantMessage(message, id) {
     const text = cleanText(message?.mes);
     return {
         id,
-        role: message?.is_user ? 'user' : 'assistant',
-        name: cleanText(message?.name) || (message?.is_user ? 'User' : 'Assistant'),
+        role: 'assistant',
+        name: cleanText(message?.name) || 'Assistant',
         text,
         fingerprint: fingerprintText(text),
         timestamp: message?.send_date ?? null,
@@ -37,26 +37,24 @@ function normalizeMessage(message, id) {
 }
 
 function rangeFingerprint(messages) {
-    const material = messages.map(item => `${item.id}|${item.role}|${item.name}|${item.text}`).join('\n\n');
+    const material = messages.map(item => `${item.id}|assistant|${item.name}|${item.text}`).join('\n\n');
     return fingerprintText(material);
 }
 
 function latestAssistantId(chat, afterId = -1) {
     for (let index = chat.length - 1; index > afterId; index -= 1) {
-        const message = chat[index];
-        if (!isNarrativeMessage(message) || message.is_user) continue;
-        return index;
+        if (isAssistantNarrativeMessage(chat[index])) return index;
     }
     return null;
 }
 
-function collectLookback(chat, beforeId, limits) {
+function collectAssistantLookback(chat, beforeId, limits) {
     const result = [];
     let characters = 0;
     for (let index = beforeId - 1; index >= 0 && result.length < limits.maxLookbackMessages; index -= 1) {
         const message = chat[index];
-        if (!isNarrativeMessage(message)) continue;
-        const normalized = normalizeMessage(message, index);
+        if (!isAssistantNarrativeMessage(message)) continue;
+        const normalized = normalizeAssistantMessage(message, index);
         if (result.length > 0 && characters + normalized.text.length > limits.maxLookbackCharacters) break;
         result.push(normalized);
         characters += normalized.text.length;
@@ -64,18 +62,18 @@ function collectLookback(chat, beforeId, limits) {
     return result.reverse();
 }
 
-function emptyBatch({ lastProcessedMessageId = null, anchorChanged = false, anchorReason = '' } = {}) {
+function emptyBatch({ lastProcessedAssistantMessageId = null, anchorChanged = false, anchorReason = '' } = {}) {
     return Object.freeze({
         hasPending: false,
         canSimulate: false,
         anchorChanged,
         anchorReason,
-        lastProcessedMessageId,
+        lastProcessedAssistantMessageId,
         startId: null,
         endId: null,
         endFingerprint: '',
         rangeFingerprint: '',
-        messageCount: 0,
+        assistantCount: 0,
         characters: 0,
         overBudget: false,
         limits: { ...PENDING_CONTEXT_LIMITS },
@@ -87,57 +85,62 @@ function emptyBatch({ lastProcessedMessageId = null, anchorChanged = false, anch
 export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options = {}) {
     const chat = Array.isArray(chatInput) ? chatInput : [];
     const limits = { ...PENDING_CONTEXT_LIMITS, ...(options?.limits || {}) };
-    const lastProcessedMessageId = Number.isInteger(sync?.lastProcessedMessageId) ? sync.lastProcessedMessageId : null;
-    const lastProcessedFingerprint = cleanText(sync?.lastProcessedFingerprint);
+    const lastProcessedAssistantMessageId = Number.isInteger(sync?.lastProcessedAssistantMessageId)
+        ? sync.lastProcessedAssistantMessageId
+        : (Number.isInteger(sync?.lastProcessedMessageId) ? sync.lastProcessedMessageId : null);
+    const lastProcessedAssistantFingerprint = cleanText(
+        sync?.lastProcessedAssistantFingerprint ?? sync?.lastProcessedFingerprint,
+    );
 
-    if (lastProcessedMessageId !== null) {
-        const anchor = chat[lastProcessedMessageId];
-        if (!isNarrativeMessage(anchor) || anchor?.is_user) {
+    if (lastProcessedAssistantMessageId !== null) {
+        const anchor = chat[lastProcessedAssistantMessageId];
+        if (!isAssistantNarrativeMessage(anchor)) {
             return emptyBatch({
-                lastProcessedMessageId,
+                lastProcessedAssistantMessageId,
                 anchorChanged: true,
                 anchorReason: '上次结算锚点已经不存在或不再是 AI 正文。可能发生了删除、回退或分支切换。',
             });
         }
-        if (lastProcessedFingerprint && fingerprintText(anchor.mes) !== lastProcessedFingerprint) {
+        if (lastProcessedAssistantFingerprint && fingerprintText(anchor.mes) !== lastProcessedAssistantFingerprint) {
             return emptyBatch({
-                lastProcessedMessageId,
+                lastProcessedAssistantMessageId,
                 anchorChanged: true,
                 anchorReason: '上次已结算的 AI 正文内容发生变化。为避免把旧分支状态和新正文混在一起，当前不会自动继续结算。',
             });
         }
     }
 
-    const endId = latestAssistantId(chat, lastProcessedMessageId ?? -1);
-    if (endId === null) return emptyBatch({ lastProcessedMessageId });
+    const endId = latestAssistantId(chat, lastProcessedAssistantMessageId ?? -1);
+    if (endId === null) return emptyBatch({ lastProcessedAssistantMessageId });
 
-    const startId = lastProcessedMessageId === null ? 0 : lastProcessedMessageId + 1;
+    const scanStart = lastProcessedAssistantMessageId === null ? 0 : lastProcessedAssistantMessageId + 1;
     const pendingMessages = [];
     let characters = 0;
-    for (let index = startId; index <= endId; index += 1) {
+    for (let index = scanStart; index <= endId; index += 1) {
         const message = chat[index];
-        if (!isNarrativeMessage(message)) continue;
-        const normalized = normalizeMessage(message, index);
+        // USER messages are intentionally ignored completely: not facts, not context, not budget.
+        if (!isAssistantNarrativeMessage(message)) continue;
+        const normalized = normalizeAssistantMessage(message, index);
         pendingMessages.push(normalized);
         characters += normalized.text.length;
     }
-    if (!pendingMessages.length) return emptyBatch({ lastProcessedMessageId });
+    if (!pendingMessages.length) return emptyBatch({ lastProcessedAssistantMessageId });
 
-    const endMessage = normalizeMessage(chat[endId], endId);
+    const endMessage = normalizeAssistantMessage(chat[endId], endId);
     const overBudget = characters > limits.maxPendingCharacters;
-    const preContext = collectLookback(chat, startId, limits);
+    const preContext = collectAssistantLookback(chat, pendingMessages[0].id, limits);
 
     return Object.freeze({
         hasPending: true,
         canSimulate: !overBudget,
         anchorChanged: false,
         anchorReason: '',
-        lastProcessedMessageId,
+        lastProcessedAssistantMessageId,
         startId: pendingMessages[0].id,
         endId,
         endFingerprint: endMessage.fingerprint,
         rangeFingerprint: rangeFingerprint(pendingMessages),
-        messageCount: pendingMessages.length,
+        assistantCount: pendingMessages.length,
         characters,
         overBudget,
         limits,

@@ -1,4 +1,4 @@
-const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算器。你的任务不是续写小说，也不是导演剧情，而是根据“已保存的世界状态 + 已结算前置上下文 + 本轮尚未结算的完整剧情区间”做一次克制、通用、稀疏的状态结算。
+const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算器。你的任务不是续写小说，也不是导演剧情，而是根据“已保存的世界状态 + 少量已结算 AI 前置正文 + 本轮尚未结算的 AI 正文区间”做一次克制、通用、稀疏的状态结算。
 
 这是通用模板，不要先判断角色卡属于恋爱、群像、古风、中世纪、现代、科幻等类别，也不要因为题材不同切换固定模板。只根据文本中真实存在的信息工作。
 
@@ -8,8 +8,9 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 3. Empty is valid（空结果合法）：慢剧情、纯对话、恋爱日常等场景完全可以没有世界变化。返回空数组/空对象是正确结果，不是失败。
 
 连续结算规则：
-- “已结算前置上下文”仅用于理解代词、承接和场景，不得把其中已经发生过的变化再次结算。
-- “本轮待结算剧情”可能包含多条 USER 与 ASSISTANT 消息；必须整体理解，然后结算区间结束时的最终世界状态。
+- “已结算 AI 前置正文”仅用于理解承接和场景，不得把其中已经发生过的变化再次结算。
+- 世界事实来源只允许 AI 回复正文。USER 消息不会提供给你，也不得假设或补全 USER 指令中的内容。
+- “本轮待结算 AI 正文”可能包含多条 AI 回复；必须整体理解，然后结算区间结束时的最终世界状态。
 - 如果同一状态在待结算区间中多次变化，以区间末尾明确成立的状态为当前状态；中间过程只有在未来忘记会造成明显矛盾时才进入世界事实/世界线记忆。
 - 不要因为待结算区间包含多楼，就逐楼重复输出同一人物或同一事实；应输出净变化。
 
@@ -70,14 +71,14 @@ function compactState(state) {
 
 function transcript(messages) {
     return (messages || [])
-        .map(item => `${item.role === 'user' ? 'USER' : 'ASSISTANT'}[${item.id}] ${item.name}:\n${item.text}`)
+        .map(item => `ASSISTANT[${item.id}] ${item.name}:\n${item.text}`)
         .join('\n\n');
 }
 
 export function buildManualSimulationMessages({ state, batch }) {
     const preContext = transcript(batch?.preContext);
     const pending = transcript(batch?.pendingMessages);
-    const userPrompt = `当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n已结算前置上下文（仅帮助理解，不得重复结算）：\n${preContext || '（无）'}\n\n本轮待结算剧情：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\n消息数：${batch.messageCount}\n正文字符数：${batch.characters}\n区间指纹：${batch.rangeFingerprint}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空；没有实际变化时不要填占位句：\n{
+    const userPrompt = `当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n已结算 AI 前置正文（仅帮助理解，不得重复结算）：\n${preContext || '（无）'}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n区间指纹：${batch.rangeFingerprint}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空；没有实际变化时不要填占位句：\n{
   "world_patch": {
     "time": null,
     "location": "",
@@ -125,7 +126,9 @@ export function buildManualSimulationMessages({ state, batch }) {
     }
   ]
 }\n\n特别注意：
-- 本轮要结算的是整个 #${batch.startId}～#${batch.endId} 区间，不是只看最后一条 AI 回复。
+- 本轮只结算 #${batch.startId}～#${batch.endId} 之间实际存在的 AI 回复；中间 USER 楼层完全不作为输入。
+- 不要试图从缺失的 USER 消息反推用户指令；只依据 AI 正文中已经呈现的剧情事实。
+- 即使 AI 楼层编号不连续，也要把这些 AI 回复作为连续正文整体结算，而不是只看最后一条。
 - 单人恋爱、慢节奏对话完全可以只更新一个人物字段，甚至全部为空。
 - 不要为了显示“大环境”而制造大环境；正文没有重大社会变化就不要生成。
 - 不要输出“暂无重大舆情”之类内容，本次根本不负责舆情。

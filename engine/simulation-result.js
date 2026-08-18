@@ -267,13 +267,13 @@ export function applySimulationPayload(baseState, payload, source) {
 
     next.sync = {
         ...(next.sync && typeof next.sync === 'object' ? next.sync : {}),
-        lastProcessedMessageId: source.id,
-        lastProcessedFingerprint: source.fingerprint,
+        lastProcessedAssistantMessageId: source.id,
+        lastProcessedAssistantFingerprint: source.fingerprint,
         lastProcessedAt: new Date().toISOString(),
-        lastProcessedRangeStartId: Number.isInteger(source.startId) ? source.startId : source.id,
-        lastProcessedMessageCount: Number.isInteger(source.messageCount) ? source.messageCount : 1,
-        lastProcessedRangeFingerprint: String(source.rangeFingerprint ?? ''),
-        lastProcessedCharacters: Number.isFinite(source.characters) ? Math.max(0, Math.trunc(source.characters)) : 0,
+        lastProcessedAssistantRangeStartId: Number.isInteger(source.startId) ? source.startId : source.id,
+        lastProcessedAssistantCount: Number.isInteger(source.assistantCount) ? source.assistantCount : 1,
+        lastProcessedAssistantRangeFingerprint: String(source.rangeFingerprint ?? ''),
+        lastProcessedAssistantCharacters: Number.isFinite(source.characters) ? Math.max(0, Math.trunc(source.characters)) : 0,
     };
     return next;
 }

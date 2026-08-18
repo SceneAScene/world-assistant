@@ -32,10 +32,10 @@ function escapeHtml(value) {
 function formatBytes(bytes){const n=Number(bytes)||0;if(n<1024)return`${n} B`;if(n<1024*1024)return`${(n/1024).toFixed(1)} KB`;return`${(n/1024/1024).toFixed(2)} MB`}
 function latestSyncText(state){
     const sync=state?.sync;
-    if(!Number.isInteger(sync?.lastProcessedMessageId))return'尚未结算剧情';
-    const start=Number.isInteger(sync.lastProcessedRangeStartId)?sync.lastProcessedRangeStartId:sync.lastProcessedMessageId;
-    const count=Number(sync.lastProcessedMessageCount)||1;
-    return start===sync.lastProcessedMessageId?`已结算消息 #${sync.lastProcessedMessageId}`:`已结算 #${start}～#${sync.lastProcessedMessageId} · ${count} 条`;
+    if(!Number.isInteger(sync?.lastProcessedAssistantMessageId))return'尚未结算 AI 正文';
+    const start=Number.isInteger(sync.lastProcessedAssistantRangeStartId)?sync.lastProcessedAssistantRangeStartId:sync.lastProcessedAssistantMessageId;
+    const count=Number(sync.lastProcessedAssistantCount)||1;
+    return start===sync.lastProcessedAssistantMessageId?`已结算 AI #${sync.lastProcessedAssistantMessageId}`:`已结算 AI #${start}～#${sync.lastProcessedAssistantMessageId} · ${count} 条`;
 }
 
 function currentWorldHtml(state) {
@@ -49,7 +49,7 @@ function currentWorldHtml(state) {
 
 function transcriptHtml(messages) {
     if (!Array.isArray(messages) || !messages.length) return '<div class="note">无。</div>';
-    return `<div class="transcript">${messages.map(item=>`<div class="message"><div class="who">#${item.id} · ${item.role==='user'?'USER':'AI'} · ${escapeHtml(item.name)}</div><div class="body">${escapeHtml(item.text)}</div></div>`).join('')}</div>`;
+    return `<div class="transcript">${messages.map(item=>`<div class="message"><div class="who">#${item.id} · AI · ${escapeHtml(item.name)}</div><div class="body">${escapeHtml(item.text)}</div></div>`).join('')}</div>`;
 }
 
 function pendingPreviewHtml(preview) {
@@ -58,8 +58,8 @@ function pendingPreviewHtml(preview) {
     if(batch.anchorChanged)return `<div class="note error">${escapeHtml(batch.anchorReason)}</div>`;
     if(!batch.hasPending)return '<div class="note">当前没有新的 AI 正文需要结算。</div>';
     const budgetNote=batch.overBudget?`<div class="note warning">待结算正文约 ${batch.characters} 个字符，超过当前单次安全预算 ${batch.limits.maxPendingCharacters}。本阶段不会静默截断，也不会额外调用模型压缩，因此暂时禁止推演。</div>`:'';
-    const previous=Number.isInteger(batch.lastProcessedMessageId)?`#${batch.lastProcessedMessageId}`:'无（首次结算）';
-    return `<div class="status-grid"><div class="status"><b>上次结算</b><span>${previous}</span></div><div class="status"><b>待结算范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>待结算消息</b><span>${batch.messageCount} 条（USER + AI）</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${budgetNote}<details class="preview-details" open><summary>预览本轮待结算剧情</summary>${transcriptHtml(batch.pendingMessages)}</details>${batch.preContext?.length?`<details class="preview-details"><summary>已结算前置上下文（仅用于理解，不会重复结算）</summary>${transcriptHtml(batch.preContext)}</details>`:''}`;
+    const previous=Number.isInteger(batch.lastProcessedAssistantMessageId)?`AI #${batch.lastProcessedAssistantMessageId}`:'无（首次结算）';
+    return `<div class="status-grid"><div class="status"><b>上次结算</b><span>${previous}</span></div><div class="status"><b>待结算范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>待结算 AI 正文</b><span>${batch.assistantCount} 条</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${budgetNote}<details class="preview-details" open><summary>预览本轮待结算 AI 正文</summary>${transcriptHtml(batch.pendingMessages)}</details>${batch.preContext?.length?`<details class="preview-details"><summary>已结算 AI 前置正文（仅用于承接，不会重复结算）</summary>${transcriptHtml(batch.preContext)}</details>`:''}`;
 }
 
 function homeHtml(version, preview) {
@@ -68,10 +68,10 @@ function homeHtml(version, preview) {
     const batch=preview?.batch;
     const canSimulate=!!batch?.canSimulate;
     return `<div class="stack">
-        <div class="card"><h2>2.0 重构 · 阶段 3D：连续上下文结算</h2><p>不再只读取最新一条 AI 回复。每次会读取“上次成功结算之后，到当前最新 AI 回复为止”的全部新增 USER + AI 消息，再结合已保存的世界状态与世界线记忆，用一次模型调用完成净变化结算。</p><div class="status-grid"><div class="status"><b>插件</b><span>已就绪 · ${escapeHtml(version)}</span></div><div class="status"><b>sceneworld 数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status"><b>自动推演</b><span>未加载 · 当前仅手动</span></div></div></div>
+        <div class="card"><h2>2.0 重构 · 阶段 3E：AI-only 连续结算</h2><p>不再只读取最新一条 AI 回复。每次只读取“上次成功结算之后，到当前最新 AI 回复为止”的全部新增 AI 正文。USER 楼层完全不进入事实来源、辅助上下文、字符预算或模型提示词。</p><div class="status-grid"><div class="status"><b>插件</b><span>已就绪 · ${escapeHtml(version)}</span></div><div class="status"><b>sceneworld 数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status"><b>自动推演</b><span>未加载 · 当前仅手动</span></div></div></div>
         ${currentWorldHtml(state)}
-        <div class="card"><h2>① 读取待结算剧情</h2><p>只在本地读取，不调用模型、不保存数据。已结算楼层只取少量前置上下文帮助理解代词和承接，真正触发变化的只有尚未结算区间。</p><div class="actions"><button class="action" type="button" data-action="read-pending">读取待结算剧情</button></div>${pendingPreviewHtml(preview)}</div>
-        <div class="card"><h2>② 手动结算本轮剧情</h2><p>确认后只调用一次当前模型。无论待结算区间包含 1 楼还是数楼，都只输出区间末尾真正成立的净变化。</p><div class="actions"><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>确认并推演待结算剧情</button>${info.dataExists?'<button class="action danger" type="button" data-action="clear">清理当前聊天 sceneworld 数据</button>':''}</div><div class="note">如果很久没有推演，SceneWorld 会把上次结算后的完整新增区间一起读取；超过安全预算时会明确停止，而不是静默漏掉较早楼层。</div></div>
+        <div class="card"><h2>① 读取待结算剧情</h2><p>只在本地读取，不调用模型、不保存数据。只收集 AI 回复；少量已结算 AI 正文仅用于承接，USER 消息完全忽略。</p><div class="actions"><button class="action" type="button" data-action="read-pending">读取待结算剧情</button></div>${pendingPreviewHtml(preview)}</div>
+        <div class="card"><h2>② 手动结算本轮剧情</h2><p>确认后只调用一次当前模型。无论有 1 条还是多条待结算 AI 正文，都只输出这些 AI 正文最终形成的净变化。</p><div class="actions"><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>确认并推演待结算剧情</button>${info.dataExists?'<button class="action danger" type="button" data-action="clear">清理当前聊天 sceneworld 数据</button>':''}</div><div class="note">如果很久没有推演，SceneWorld 会把上次结算后的全部新增 AI 回复一起读取；USER 消息始终跳过。超过安全预算时会明确停止。</div></div>
     </div>`;
 }
 
@@ -114,7 +114,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
     const render=()=>{shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop"><section class="panel" role="dialog" aria-modal="true" aria-label="世界动态"><header class="header"><div class="title">世界动态</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${renderTab(activeTab,version,preview)}</main><nav class="nav" aria-label="世界动态栏目">${TABS.map(tab=>`<button type="button" data-tab="${tab}" aria-selected="${tab===activeTab}">${tab}</button>`).join('')}</nav></section></div>`;
         shadow.querySelector('.close')?.addEventListener('click',()=>onClose?.());shadow.querySelector('.backdrop')?.addEventListener('click',e=>{if(e.target===e.currentTarget)onClose?.()});shadow.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{activeTab=button.dataset.tab||'此刻';render()}));
         shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged)notify(batch.anchorReason,'error');else if(!batch?.hasPending)notify('当前没有新的 AI 正文需要结算','info');else if(batch.overBudget)notify('待结算剧情超过当前单次安全预算，请查看界面说明','warning')}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待结算剧情失败：${error?.message||error}`,'error')}render()});
-        shadow.querySelector('[data-action="simulate"]')?.addEventListener('click',async()=>{const batch=preview?.batch;if(busy||!batch?.canSimulate)return;if(!confirm(`将调用一次当前 SillyTavern 模型，结算 #${batch.startId}～#${batch.endId} 共 ${batch.messageCount} 条新增消息。继续吗？`))return;busy=true;try{const result=await actions?.simulatePending?.(batch);preview=actions?.inspectPendingNarrative?.()??preview;const count=countReportedChanges(result?.changeSummary);notify(count?`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`:`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`,'success')}catch(error){console.error('[SceneWorld] pending simulation failed',error);notify(`世界推演失败：${error?.message||error}`,'error')}finally{busy=false;render()}});
+        shadow.querySelector('[data-action="simulate"]')?.addEventListener('click',async()=>{const batch=preview?.batch;if(busy||!batch?.canSimulate)return;if(!confirm(`将调用一次当前 SillyTavern 模型，结算 #${batch.startId}～#${batch.endId} 共 ${batch.assistantCount} 条 AI 正文。继续吗？`))return;busy=true;try{const result=await actions?.simulatePending?.(batch);preview=actions?.inspectPendingNarrative?.()??preview;const count=countReportedChanges(result?.changeSummary);notify(count?`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`:`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`,'success')}catch(error){console.error('[SceneWorld] pending simulation failed',error);notify(`世界推演失败：${error?.message||error}`,'error')}finally{busy=false;render()}});
         shadow.querySelector('[data-action="clear"]')?.addEventListener('click',async()=>{if(busy)return;if(!confirm('只删除当前聊天的 chatMetadata.sceneworld 数据。不会删除聊天正文，也不会触碰其他插件数据。确定继续吗？'))return;busy=true;try{const removed=await clearSceneWorldState();preview=actions?.inspectPendingNarrative?.()??null;notify(removed?'当前聊天的 sceneworld 数据已清理':'当前聊天没有 sceneworld 数据','success')}catch(error){console.error('[SceneWorld] clear state failed',error);notify(`清理数据失败：${error?.message||error}`,'error')}finally{busy=false;render()}})
     };
     shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});render();document.body.appendChild(host);return{host,refresh:render,onChatChanged(){preview=null;render()},destroy(){host?.remove()}};
