@@ -2,7 +2,7 @@ import { createSceneWorldController } from './app/sceneworld-controller.js';
 import { mountWandEntry, unmountWandEntry } from './ui/wand-entry.js';
 import { notify } from './platform/sillytavern.js';
 
-const VERSION = '2.0.0-alpha.20';
+const VERSION = '2.0.0-alpha.21';
 let controller = null;
 let activated = false;
 

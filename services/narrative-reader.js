@@ -13,5 +13,8 @@ export function readPendingNarrativeBatch(sync = {}, options = {}) {
             mode: settings.initialSettlementMode,
             startFloor: settings.initialStartFloor,
         },
+        limits: {
+            maxPendingAssistantMessages: settings.maxPendingAssistantMessages,
+        },
     });
 }

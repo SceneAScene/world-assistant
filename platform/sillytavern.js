@@ -20,6 +20,8 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     // 若用户明确选择从某楼层回溯，则从指定楼层起每批最多向后结算 10 条。
     initialSettlementMode: 'latest',
     initialStartFloor: 0,
+    // 单次世界推演读取的 AI 正文条数。UI 只提供 5 或 10，且最大不超过 10。
+    maxPendingAssistantMessages: 10,
     // 柏宝书长期历史也分开控制。世界推演和见闻可独立启用。
     simulationUseBaiBaiBook: false,
     observationUseBaiBaiBook: false,
@@ -92,6 +94,7 @@ export function getSceneWorldSettings() {
     const initialStartFloor = Number.isFinite(Number(merged.initialStartFloor))
         ? Math.max(0, Math.trunc(Number(merged.initialStartFloor)))
         : 0;
+    const maxPendingAssistantMessages = Number(merged.maxPendingAssistantMessages) === 5 ? 5 : 10;
 
     const legacyWorldInfoMaxChars = Number(source.worldInfoMaxChars);
     const simulationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(
@@ -121,6 +124,7 @@ export function getSceneWorldSettings() {
         contentFallbackToWholeMessage: merged.contentFallbackToWholeMessage === true,
         initialSettlementMode,
         initialStartFloor,
+        maxPendingAssistantMessages,
         simulationUseBaiBaiBook,
         observationUseBaiBaiBook,
         baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
@@ -143,8 +147,12 @@ export function updateSceneWorldSettings(patch) {
         ['simulationWorldInfoMaxChars', 2000, 32000],
         ['observationWorldInfoMaxChars', 2000, 32000],
         ['baibaiHistoryMaxChars', 2000, 20000],
+        ['maxPendingAssistantMessages', 1, 10],
     ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
+    }
+    if ('maxPendingAssistantMessages' in patch) {
+        next.maxPendingAssistantMessages = Number(patch.maxPendingAssistantMessages) === 5 ? 5 : 10;
     }
     if ('initialSettlementMode' in patch) {
         next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
