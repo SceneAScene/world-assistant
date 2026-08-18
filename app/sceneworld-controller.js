@@ -2,7 +2,7 @@ import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
 import { getSceneWorldEventApi } from '../platform/sillytavern.js';
-import { inspectLatestNarrative, simulateLatestNarrative } from '../services/world-simulation.js';
+import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { createSceneWorldShell, removeSceneWorldShell } from '../ui/sceneworld-shell.js';
 
 export function createSceneWorldController({ version }) {
@@ -42,8 +42,8 @@ export function createSceneWorldController({ version }) {
             version,
             onClose: close,
             actions: {
-                inspectLatestNarrative,
-                simulateLatest: expectedSource => tasks.run('manual-simulation', () => simulateLatestNarrative(expectedSource)),
+                inspectPendingNarrative,
+                simulatePending: expectedBatch => tasks.run('manual-simulation', () => simulatePendingNarrative(expectedBatch)),
                 isTaskRunning: key => tasks.isRunning(key),
             },
         });

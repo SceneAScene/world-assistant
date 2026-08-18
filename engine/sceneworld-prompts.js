@@ -1,4 +1,4 @@
-const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算器。你的任务不是续写小说，也不是导演剧情，而是根据“已保存的世界状态 + 最近正文”做一次克制、通用、稀疏的状态结算。
+const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算器。你的任务不是续写小说，也不是导演剧情，而是根据“已保存的世界状态 + 已结算前置上下文 + 本轮尚未结算的完整剧情区间”做一次克制、通用、稀疏的状态结算。
 
 这是通用模板，不要先判断角色卡属于恋爱、群像、古风、中世纪、现代、科幻等类别，也不要因为题材不同切换固定模板。只根据文本中真实存在的信息工作。
 
@@ -7,11 +7,17 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 2. Evidence-based（有依据）：正文、已有客观状态或明确世界设定没有依据时，不得为了填表创造事件、社会变化、人物目标、人物认知或舆情。
 3. Empty is valid（空结果合法）：慢剧情、纯对话、恋爱日常等场景完全可以没有世界变化。返回空数组/空对象是正确结果，不是失败。
 
+连续结算规则：
+- “已结算前置上下文”仅用于理解代词、承接和场景，不得把其中已经发生过的变化再次结算。
+- “本轮待结算剧情”可能包含多条 USER 与 ASSISTANT 消息；必须整体理解，然后结算区间结束时的最终世界状态。
+- 如果同一状态在待结算区间中多次变化，以区间末尾明确成立的状态为当前状态；中间过程只有在未来忘记会造成明显矛盾时才进入世界事实/世界线记忆。
+- 不要因为待结算区间包含多楼，就逐楼重复输出同一人物或同一事实；应输出净变化。
+
 其他规则：
 - 不替用户角色决定行动、情绪、目标或认知。
 - 不把“没有变化”“局势稳定”“一切正常”“暂无重大事件”之类占位句写入状态。
 - 世界时间只在正文有明确时间证据时更新；禁止猜日期、钟点或无依据地累计时间。
-- 人物没出场不代表人物被删除。只有正文明确改变某人物时才更新该人物。
+- 人物没出场不代表人物被删除。只有待结算剧情明确改变某人物时才更新该人物。
 - 人物“知道什么”必须有获知路径；公开存在的信息也不等于所有人物自动知道。
 - 世界事实只保存确定成立、会约束后续一致性的内容；传闻、猜测、角色误解不能升级成事实。
 - 世界线记忆只保存“如果以后忘记会导致明显世界线矛盾”的少量信息，不要把每轮剧情摘要都塞进去。
@@ -62,12 +68,16 @@ function compactState(state) {
     };
 }
 
-export function buildManualSimulationMessages({ state, source, contextMessages }) {
-    const transcript = (contextMessages || [])
+function transcript(messages) {
+    return (messages || [])
         .map(item => `${item.role === 'user' ? 'USER' : 'ASSISTANT'}[${item.id}] ${item.name}:\n${item.text}`)
         .join('\n\n');
+}
 
-    const userPrompt = `当前 SceneWorld 状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n最近聊天正文：\n${transcript}\n\n本轮需要结算的最新 AI 正文：消息 #${source.id}\n正文指纹：${source.fingerprint}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空；没有实际变化时不要填占位句：\n{
+export function buildManualSimulationMessages({ state, batch }) {
+    const preContext = transcript(batch?.preContext);
+    const pending = transcript(batch?.pendingMessages);
+    const userPrompt = `当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n已结算前置上下文（仅帮助理解，不得重复结算）：\n${preContext || '（无）'}\n\n本轮待结算剧情：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\n消息数：${batch.messageCount}\n正文字符数：${batch.characters}\n区间指纹：${batch.rangeFingerprint}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空；没有实际变化时不要填占位句：\n{
   "world_patch": {
     "time": null,
     "location": "",
@@ -76,8 +86,8 @@ export function buildManualSimulationMessages({ state, source, contextMessages }
   "moment_items_upsert": [
     {
       "id": "已有动态卡请复用 id；新卡可留空",
-      "title": "只写当前确实值得持续显示的中性标题，例如‘附近交通’‘王都粮价’‘公司安排’；无则不要生成",
-      "text": "客观状态"
+      "title": "只写当前确实值得持续显示的中性标题；无则不要生成",
+      "text": "在待结算区间结束时仍成立的客观状态"
     }
   ],
   "moment_items_remove_ids": ["只有某个已有动态已明确失效/结束时，才填它的 id"],
@@ -87,7 +97,7 @@ export function buildManualSimulationMessages({ state, source, contextMessages }
       "key": "稳定简短的事实键",
       "value": "确定成立、以后忘记可能造成矛盾的客观事实",
       "validity": "current|upcoming|historical|persistent",
-      "evidence": "支持此事实的正文短证据；纯既有状态延续可为空"
+      "evidence": "支持此事实的待结算正文短证据；纯既有状态延续可为空"
     }
   ],
   "people_upsert": [
@@ -102,7 +112,7 @@ export function buildManualSimulationMessages({ state, source, contextMessages }
       ],
       "details_remove": ["只有某个旧详情已明确失效时填 label"],
       "knowledge_add": [
-        { "text": "人物新确认知道的信息", "evidence": "证明其获知路径的正文短证据" }
+        { "text": "人物新确认知道的信息", "evidence": "证明其获知路径的待结算正文短证据" }
       ]
     }
   ],
@@ -111,13 +121,14 @@ export function buildManualSimulationMessages({ state, source, contextMessages }
       "id": "已有记忆请复用 id；新记忆可留空",
       "text": "只有未来忘记会导致明显世界线矛盾的信息",
       "reason": "为什么需要长期保留",
-      "evidence": "支持它的正文短证据"
+      "evidence": "支持它的待结算正文短证据"
     }
   ]
 }\n\n特别注意：
+- 本轮要结算的是整个 #${batch.startId}～#${batch.endId} 区间，不是只看最后一条 AI 回复。
 - 单人恋爱、慢节奏对话完全可以只更新一个人物字段，甚至全部为空。
 - 不要为了显示“大环境”而制造大环境；正文没有重大社会变化就不要生成。
-- 不要输出‘暂无重大舆情’之类内容，本次根本不负责舆情。
+- 不要输出“暂无重大舆情”之类内容，本次根本不负责舆情。
 - 已有对象没有变化时不要重复输出。`;
 
     return [

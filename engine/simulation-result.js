@@ -270,6 +270,10 @@ export function applySimulationPayload(baseState, payload, source) {
         lastProcessedMessageId: source.id,
         lastProcessedFingerprint: source.fingerprint,
         lastProcessedAt: new Date().toISOString(),
+        lastProcessedRangeStartId: Number.isInteger(source.startId) ? source.startId : source.id,
+        lastProcessedMessageCount: Number.isInteger(source.messageCount) ? source.messageCount : 1,
+        lastProcessedRangeFingerprint: String(source.rangeFingerprint ?? ''),
+        lastProcessedCharacters: Number.isFinite(source.characters) ? Math.max(0, Math.trunc(source.characters)) : 0,
     };
     return next;
 }

@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 4;
+export const SCENEWORLD_SCHEMA_VERSION = 5;
 
 function nowIso() {
     return new Date().toISOString();
@@ -108,6 +108,10 @@ export function createEmptySceneWorldState() {
             lastProcessedMessageId: null,
             lastProcessedFingerprint: '',
             lastProcessedAt: null,
+            lastProcessedRangeStartId: null,
+            lastProcessedMessageCount: 0,
+            lastProcessedRangeFingerprint: '',
+            lastProcessedCharacters: 0,
         },
         world: {
             time: null,
