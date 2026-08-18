@@ -2,12 +2,22 @@ function cleanText(value, max = 2000) {
     return String(value ?? '').trim().slice(0, max);
 }
 
+const NO_CHANGE_TEXT = new Set([
+    '无', '暂无', '无变化', '暂无变化', '没有变化', '无显著变化', '暂无显著变化',
+    '无重要变化', '暂无重要变化', '无新增', '暂无新增', '一切正常', '局势稳定',
+]);
+
+function meaningfulText(value, max = 2000) {
+    const text = cleanText(value, max);
+    return !text || NO_CHANGE_TEXT.has(text) ? '' : text;
+}
+
 function stringArray(value, { maxItems = 80, maxLength = 600 } = {}) {
     if (!Array.isArray(value)) return [];
     const result = [];
     const seen = new Set();
     for (const item of value) {
-        const text = cleanText(item, maxLength);
+        const text = meaningfulText(item, maxLength);
         if (!text || seen.has(text)) continue;
         seen.add(text);
         result.push(text);
@@ -66,11 +76,8 @@ function extractJsonText(raw) {
 
 export function parseSimulationResponse(raw) {
     let payload;
-    try {
-        payload = JSON.parse(extractJsonText(raw));
-    } catch (error) {
-        throw new Error(`无法解析世界推演 JSON：${error?.message || error}`);
-    }
+    try { payload = JSON.parse(extractJsonText(raw)); }
+    catch (error) { throw new Error(`无法解析世界推演 JSON：${error?.message || error}`); }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('世界推演结果不是 JSON 对象');
     return payload;
 }
@@ -92,20 +99,18 @@ function validChoice(value, allowed, fallback) {
 
 function normalizeKnowledgeAdd(value, sourceId) {
     return objectArray(value, item => {
-        const text = cleanText(item.text ?? item.value, 600);
+        const text = meaningfulText(item.text ?? item.value, 600);
         if (!text) return null;
-        return {
-            text,
-            evidence: cleanText(item.evidence, 500),
-            sourceMessageId: sourceId,
-        };
+        return { text, evidence: meaningfulText(item.evidence, 500), sourceMessageId: sourceId };
     }, 30);
 }
 
 function uniqueKnowledge(previous, incoming, maxItems = 80) {
     const map = new Map();
     for (const item of [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(incoming) ? incoming : [])]) {
-        const normalized = typeof item === 'string' ? { text: cleanText(item, 600), evidence: '', sourceMessageId: null } : item;
+        const normalized = typeof item === 'string'
+            ? { text: meaningfulText(item, 600), evidence: '', sourceMessageId: null }
+            : item;
         if (!normalized?.text) continue;
         map.set(normalized.text, normalized);
     }
@@ -125,87 +130,124 @@ function upsertByIdentity(previous, incoming, identity) {
 }
 
 function normalizeFact(item, source) {
-    const key = cleanText(item.key ?? item.subject, 180);
-    const value = cleanText(item.value ?? item.text, 900);
+    const key = meaningfulText(item.key ?? item.subject, 180);
+    const value = meaningfulText(item.value ?? item.text, 900);
     if (!key && !value) return null;
     return {
-        id: cleanText(item.id, 120) || slug(`${key}|${value}`, 'fact'),
+        id: cleanText(item.id, 120) || slug(key || value.slice(0, 80), 'fact'),
         key: key || value.slice(0, 80),
         value,
         validity: validChoice(item.validity, ['current', 'upcoming', 'historical', 'persistent'], 'current'),
         source: 'simulation',
-        evidence: cleanText(item.evidence, 500),
+        evidence: meaningfulText(item.evidence, 500),
         sourceMessageId: source.id,
     };
 }
 
+function normalizeMoment(item, source) {
+    const title = meaningfulText(item.title ?? item.label, 140);
+    const text = meaningfulText(item.text ?? item.value ?? item.summary, 1200);
+    if (!title || !text) return null;
+    return {
+        id: cleanText(item.id, 120) || slug(title, 'moment'),
+        title,
+        text,
+        sourceMessageId: source.id,
+    };
+}
+
+function detailsMap(items) {
+    const map = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+        if (!item || typeof item !== 'object') continue;
+        const label = meaningfulText(item.label ?? item.key, 80);
+        const value = meaningfulText(item.value ?? item.text, 700);
+        if (label && value) map.set(label, { label, value });
+    }
+    return map;
+}
+
 function normalizePerson(item, source, existing) {
-    const name = cleanText(item.name, 120);
+    const name = meaningfulText(item.name, 120) || existing?.name || '';
     if (!name) return null;
     const id = cleanText(item.id, 120) || existing?.id || slug(name, 'person');
+    const details = detailsMap(existing?.details);
+    for (const label of stringArray(item.details_remove, { maxItems: 20, maxLength: 80 })) details.delete(label);
+    for (const [label, value] of detailsMap(item.details_upsert)) details.set(label, value);
+
+    const location = meaningfulText(item.location, 260);
+    const status = meaningfulText(item.status, 900);
     return {
         ...(existing || {}),
         id,
         name,
-        aliases: stringArray(item.aliases ?? existing?.aliases, { maxItems: 20, maxLength: 120 }),
-        location: cleanText(item.location, 260) || existing?.location || '',
-        status: cleanText(item.status, 900) || existing?.status || '',
-        goal: cleanText(item.goal, 700) || existing?.goal || '',
+        aliases: Array.isArray(item.aliases) && item.aliases.length
+            ? stringArray(item.aliases, { maxItems: 20, maxLength: 120 })
+            : (Array.isArray(existing?.aliases) ? existing.aliases : []),
+        location: location || existing?.location || '',
+        status: status || existing?.status || '',
+        details: [...details.values()].slice(0, 24),
         knowledge: uniqueKnowledge(existing?.knowledge, normalizeKnowledgeAdd(item.knowledge_add ?? item.knowledgeAdd, source.id)),
         lastUpdatedMessageId: source.id,
     };
 }
 
-function normalizeUndercurrent(item, source, existing) {
-    const title = cleanText(item.title, 180);
-    if (!title) return null;
+function normalizeWorldlineMemory(item, source) {
+    const text = meaningfulText(item.text ?? item.value, 700);
+    if (!text) return null;
     return {
-        ...(existing || {}),
-        id: cleanText(item.id, 120) || existing?.id || slug(title, 'flow'),
-        title,
-        status: validChoice(item.status, ['open', 'developing', 'resolved', 'cancelled'], existing?.status || 'open'),
-        summary: cleanText(item.summary, 1400) || existing?.summary || '',
-        participants: stringArray(item.participants ?? existing?.participants, { maxItems: 30, maxLength: 120 }),
-        visibility: validChoice(item.visibility, ['hidden', 'approaching', 'visible'], existing?.visibility || 'hidden'),
-        lastUpdatedMessageId: source.id,
+        id: cleanText(item.id, 120) || slug(text, 'memory'),
+        text,
+        reason: meaningfulText(item.reason, 300),
+        evidence: meaningfulText(item.evidence, 500),
+        sourceMessageId: source.id,
+        recordedAt: new Date().toISOString(),
     };
 }
 
-function normalizeEcho(item, source, existing) {
-    const title = cleanText(item.title, 180);
-    if (!title) return null;
-    return {
-        ...(existing || {}),
-        id: cleanText(item.id, 120) || existing?.id || slug(title, 'echo'),
-        title,
-        status: validChoice(item.status, ['active', 'resolved'], existing?.status || 'active'),
-        kind: validChoice(item.kind, ['relationship', 'object', 'promise', 'conflict', 'clue', 'consequence', 'other'], existing?.kind || 'other'),
-        summary: cleanText(item.summary, 1200) || existing?.summary || '',
-        lastUpdatedMessageId: source.id,
-    };
-}
-
-function mergeUniqueStrings(previous, incoming, maxItems = 100) {
-    const result = [];
-    const seen = new Set();
-    for (const item of [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(incoming) ? incoming : [])]) {
-        const text = cleanText(typeof item === 'string' ? item : item?.text, 600);
-        if (!text || seen.has(text)) continue;
-        seen.add(text);
-        result.push(text);
+function mergeWorldlineMemory(previous, incoming, maxItems = 120) {
+    const map = new Map();
+    for (const item of [...(Array.isArray(previous) ? previous : []), ...incoming]) {
+        if (!item?.text) continue;
+        const key = item.id || item.text;
+        map.set(key, item);
     }
-    return result.slice(-maxItems);
+    return [...map.values()].slice(-maxItems);
+}
+
+export function summarizeSimulationPayload(payload) {
+    const patch = payload?.world_patch && typeof payload.world_patch === 'object' && !Array.isArray(payload.world_patch)
+        ? payload.world_patch : {};
+    return {
+        worldPatch: Boolean(meaningfulText(patch.location, 300) || meaningfulText(patch.summary, 1600) || (patch.time !== undefined && patch.time !== '' && patch.time !== null)),
+        momentsUpsert: Array.isArray(payload?.moment_items_upsert) ? payload.moment_items_upsert.length : 0,
+        momentsRemove: Array.isArray(payload?.moment_items_remove_ids) ? payload.moment_items_remove_ids.length : 0,
+        facts: Array.isArray(payload?.world_facts_upsert) ? payload.world_facts_upsert.length : 0,
+        people: Array.isArray(payload?.people_upsert) ? payload.people_upsert.length : 0,
+        memory: Array.isArray(payload?.worldline_memory_add) ? payload.worldline_memory_add.length : 0,
+    };
 }
 
 export function applySimulationPayload(baseState, payload, source) {
     const next = typeof structuredClone === 'function' ? structuredClone(baseState) : JSON.parse(JSON.stringify(baseState));
+    next.world = next.world && typeof next.world === 'object'
+        ? next.world : { time: null, location: '', summary: '', moments: [], facts: [] };
 
     const patch = payload.world_patch && typeof payload.world_patch === 'object' && !Array.isArray(payload.world_patch)
         ? payload.world_patch : {};
-    next.world = next.world && typeof next.world === 'object' ? next.world : { time: null, location: '', summary: '', facts: [] };
-    if (patch.time !== undefined && patch.time !== '') next.world.time = patch.time === null ? null : cleanText(patch.time, 120);
-    if (cleanText(patch.location, 300)) next.world.location = cleanText(patch.location, 300);
-    if (cleanText(patch.summary, 1600)) next.world.summary = cleanText(patch.summary, 1600);
+    if (patch.time !== undefined && patch.time !== null && patch.time !== '') {
+        const time = meaningfulText(patch.time, 120);
+        if (time) next.world.time = time;
+    }
+    const location = meaningfulText(patch.location, 300);
+    const summary = meaningfulText(patch.summary, 1600);
+    if (location) next.world.location = location;
+    if (summary) next.world.summary = summary;
+
+    const removeMomentIds = new Set(stringArray(payload.moment_items_remove_ids, { maxItems: 60, maxLength: 120 }));
+    const previousMoments = (Array.isArray(next.world.moments) ? next.world.moments : []).filter(item => !removeMomentIds.has(cleanText(item?.id, 120)));
+    const incomingMoments = objectArray(payload.moment_items_upsert, item => normalizeMoment(item, source), 40);
+    next.world.moments = upsertByIdentity(previousMoments, incomingMoments, item => cleanText(item?.id, 120) || cleanText(item?.title, 140)).slice(-80);
 
     const incomingFacts = objectArray(payload.world_facts_upsert, item => normalizeFact(item, source), 40);
     next.world.facts = upsertByIdentity(next.world.facts, incomingFacts, item => cleanText(item?.id, 120) || cleanText(item?.key, 180)).slice(-160);
@@ -213,51 +255,15 @@ export function applySimulationPayload(baseState, payload, source) {
     const previousPeople = Array.isArray(next.people) ? next.people : [];
     const personUpdates = objectArray(payload.people_upsert, item => {
         const id = cleanText(item.id, 120);
-        const name = cleanText(item.name, 120);
-        const existing = previousPeople.find(p => (id && p.id === id) || (!id && name && p.name === name));
+        const name = meaningfulText(item.name, 120);
+        const existing = previousPeople.find(person => (id && person.id === id) || (!id && name && person.name === name));
         return normalizePerson(item, source, existing);
     }, 80);
     next.people = upsertByIdentity(previousPeople, personUpdates, item => cleanText(item?.id, 120) || cleanText(item?.name, 120)).slice(0, 180);
 
-    const previousFlows = Array.isArray(next.undercurrents) ? next.undercurrents : [];
-    const flowUpdates = objectArray(payload.undercurrents_upsert, item => {
-        const id = cleanText(item.id, 120);
-        const title = cleanText(item.title, 180);
-        const existing = previousFlows.find(x => (id && x.id === id) || (!id && title && x.title === title));
-        return normalizeUndercurrent(item, source, existing);
-    }, 60);
-    next.undercurrents = upsertByIdentity(previousFlows, flowUpdates, item => cleanText(item?.id, 120) || cleanText(item?.title, 180)).slice(0, 140);
-
-    const previousEchoes = Array.isArray(next.echoes) ? next.echoes : [];
-    const echoUpdates = objectArray(payload.echoes_upsert, item => {
-        const id = cleanText(item.id, 120);
-        const title = cleanText(item.title, 180);
-        const existing = previousEchoes.find(x => (id && x.id === id) || (!id && title && x.title === title));
-        return normalizeEcho(item, source, existing);
-    }, 60);
-    next.echoes = upsertByIdentity(previousEchoes, echoUpdates, item => cleanText(item?.id, 120) || cleanText(item?.title, 180)).slice(-160);
-
-    next.memory = next.memory && typeof next.memory === 'object' ? next.memory : { shortTerm: [], longTerm: [] };
-    next.memory.shortTerm = mergeUniqueStrings(next.memory.shortTerm, stringArray(payload.memory_short_term_add, { maxItems: 30, maxLength: 600 }), 120);
-    next.memory.longTerm = Array.isArray(next.memory.longTerm) ? next.memory.longTerm : [];
-
-    const rawEntry = payload.chronicle_entry;
-    if (rawEntry && typeof rawEntry === 'object' && !Array.isArray(rawEntry)) {
-        const entry = {
-            time: cleanText(rawEntry.time, 120),
-            title: cleanText(rawEntry.title, 220),
-            summary: cleanText(rawEntry.summary, 1800),
-            sourceMessageId: source.id,
-            sourceFingerprint: source.fingerprint,
-            recordedAt: new Date().toISOString(),
-        };
-        if (entry.title || entry.summary) {
-            next.chronicle = Array.isArray(next.chronicle) ? next.chronicle : [];
-            const existingIndex = next.chronicle.findIndex(item => item?.sourceMessageId === source.id && item?.sourceFingerprint === source.fingerprint);
-            if (existingIndex >= 0) next.chronicle[existingIndex] = entry;
-            else next.chronicle = [...next.chronicle, entry].slice(-300);
-        }
-    }
+    next.memory = next.memory && typeof next.memory === 'object' ? next.memory : { worldline: [] };
+    const incomingMemory = objectArray(payload.worldline_memory_add, item => normalizeWorldlineMemory(item, source), 24);
+    next.memory.worldline = mergeWorldlineMemory(next.memory.worldline, incomingMemory, 120);
 
     next.sync = {
         ...(next.sync && typeof next.sync === 'object' ? next.sync : {}),
