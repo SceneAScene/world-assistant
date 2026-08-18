@@ -4,6 +4,7 @@ import { buildManualSimulationMessages } from '../engine/sceneworld-prompts.js';
 import { applySimulationPayload, parseSimulationResponse, summarizeSimulationPayload } from '../engine/simulation-result.js';
 import { generateWithCurrentConnection } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
+import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 import { readPendingNarrativeBatch } from './narrative-reader.js';
 
 function batchSource(batch) {
@@ -15,6 +16,7 @@ function batchSource(batch) {
         rangeFingerprint: batch.rangeFingerprint,
         assistantCount: batch.assistantCount,
         characters: batch.characters,
+        contentFilterSignature: batch.contentFilterSignature || '',
     });
 }
 
@@ -45,10 +47,16 @@ export async function simulatePendingNarrative(expectedBatch = null) {
         state: base,
         queryText: [...(batch.preContext || []), ...(batch.pendingMessages || [])].map(item => item?.text || '').join('\n'),
     });
+    const baibai = buildBaiBaiBookHistoryContext();
+    const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
+        ? '注意：柏宝书报告长期历史存在摘要缺口，只能作为不完整参考。'
+        : '';
     const messages = buildManualSimulationMessages({
         state: base,
         batch,
         worldReferenceText: formatWorldReferenceContext(reference),
+        longTermHistoryText: baibai.text,
+        longTermHistoryNote,
     });
     const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
     const payload = parseSimulationResponse(raw);
@@ -56,5 +64,5 @@ export async function simulatePendingNarrative(expectedBatch = null) {
     const source = batchSource(batch);
     const next = applySimulationPayload(base, payload, source);
     const saved = await commitSceneWorldState(next);
-    return { batch, source, state: saved, raw, changeSummary, worldReference: reference.stats };
+    return { batch, source, state: saved, raw, changeSummary, worldReference: reference.stats, baibai: baibai.stats };
 }

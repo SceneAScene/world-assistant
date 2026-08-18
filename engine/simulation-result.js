@@ -143,7 +143,38 @@ function normalizeFact(item, source) {
         sourceMessageId: source.id,
         publicity: validChoice(item.publicity, ['private', 'trace', 'public'], 'private'),
         publicHint: meaningfulText(item.public_hint ?? item.publicHint, 500),
+        updatedAt: new Date().toISOString(),
     };
+}
+
+function normalizeFactKey(value) {
+    return cleanText(value, 180).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function mergeFacts(previous, incoming, maxItems = 20) {
+    const result = Array.isArray(previous) ? previous.map(item => ({ ...item })) : [];
+    for (const item of incoming) {
+        if (!item) continue;
+        const id = cleanText(item.id, 120);
+        const key = normalizeFactKey(item.key);
+        let index = -1;
+        if (id) index = result.findIndex(existing => cleanText(existing?.id, 120) === id);
+        if (index < 0 && key) index = result.findIndex(existing => normalizeFactKey(existing?.key) === key);
+        if (index >= 0) result[index] = { ...result[index], ...item, id: result[index].id || item.id };
+        else result.push(item);
+    }
+    const deduped = [];
+    const seenIds = new Set();
+    const seenKeys = new Set();
+    for (const item of result) {
+        const id = cleanText(item?.id, 120);
+        const key = normalizeFactKey(item?.key);
+        if ((id && seenIds.has(id)) || (key && seenKeys.has(key))) continue;
+        if (id) seenIds.add(id);
+        if (key) seenKeys.add(key);
+        deduped.push(item);
+    }
+    return deduped.slice(-maxItems);
 }
 
 function normalizeMoment(item, source) {
@@ -158,12 +189,24 @@ function normalizeMoment(item, source) {
     };
 }
 
-function detailsMap(items) {
+
+function looksLikeUiStat(value) {
+    const text = cleanText(value, 900);
+    if (!text) return false;
+    if (/(?:今日|本日|累计).{0,12}次数\s*[:：]?\s*[+-]?\d+(?:\.\d+)?\s*次?/i.test(text)) return true;
+    if (/(?:好感|亲密|欲望|快感|高潮|HP|MP|SAN|经验值?|属性值?|进度值?|等级|level).{0,12}[:：=]?\s*[+-]?\d/i.test(text)) return true;
+    if (/^[^。！？!?\n]{1,24}[:：]\s*[+-]?\d+(?:\.\d+)?\s*(?:次|点|级|%|％)?$/i.test(text)) return true;
+    if (/\b\d+\s*\/\s*\d+\b/.test(text)) return true;
+    return false;
+}
+
+function detailsMap(items, { rejectUiStats = false } = {}) {
     const map = new Map();
     for (const item of Array.isArray(items) ? items : []) {
         if (!item || typeof item !== 'object') continue;
         const label = meaningfulText(item.label ?? item.key, 80);
         const value = meaningfulText(item.value ?? item.text, 700);
+        if (rejectUiStats && (looksLikeUiStat(label) || looksLikeUiStat(value) || looksLikeUiStat(`${label}：${value}`))) continue;
         if (label && value) map.set(label, { label, value });
     }
     return map;
@@ -175,10 +218,11 @@ function normalizePerson(item, source, existing) {
     const id = cleanText(item.id, 120) || existing?.id || slug(name, 'person');
     const details = detailsMap(existing?.details);
     for (const label of stringArray(item.details_remove, { maxItems: 20, maxLength: 80 })) details.delete(label);
-    for (const [label, value] of detailsMap(item.details_upsert)) details.set(label, value);
+    for (const [label, value] of detailsMap(item.details_upsert, { rejectUiStats: true })) details.set(label, value);
 
     const location = meaningfulText(item.location, 260);
-    const status = meaningfulText(item.status, 900);
+    const statusRaw = meaningfulText(item.status, 900);
+    const status = looksLikeUiStat(statusRaw) ? '' : statusRaw;
     return {
         ...(existing || {}),
         id,
@@ -194,27 +238,82 @@ function normalizePerson(item, source, existing) {
     };
 }
 
-function normalizeWorldlineMemory(item, source) {
+const MEMORY_CATEGORIES = ['身份', '长期地点', '关系', '承诺', '认知', '后果', '世界规则', '持有物', '其他'];
+const MEMORY_STATUSES = ['当前', '长期', '历史'];
+
+function normalizeMemoryKey(value) {
+    return cleanText(value, 180).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function findExistingMemory(previous, item) {
+    const id = cleanText(item?.id, 120);
+    const key = normalizeMemoryKey(item?.key ?? item?.memory_key ?? item?.memoryKey);
+    if (id) {
+        const byId = previous.find(entry => cleanText(entry?.id, 120) === id);
+        if (byId) return byId;
+    }
+    if (key) {
+        const byKey = previous.find(entry => normalizeMemoryKey(entry?.key) === key);
+        if (byKey) return byKey;
+    }
+    return null;
+}
+
+function normalizeWorldlineMemory(item, source, existing = null) {
     const text = meaningfulText(item.text ?? item.value, 700);
     if (!text) return null;
+    const key = meaningfulText(item.key ?? item.memory_key ?? item.memoryKey, 180) || existing?.key || '';
+    const now = new Date().toISOString();
+    const idSeed = key || text;
     return {
-        id: cleanText(item.id, 120) || slug(text, 'memory'),
+        ...(existing || {}),
+        id: cleanText(item.id, 120) || existing?.id || slug(idSeed, 'memory'),
+        key,
+        category: validChoice(item.category, MEMORY_CATEGORIES, existing?.category || '其他'),
+        status: validChoice(item.status, MEMORY_STATUSES, existing?.status || '长期'),
         text,
-        reason: meaningfulText(item.reason, 300),
+        reason: meaningfulText(item.reason, 300) || existing?.reason || '',
         evidence: meaningfulText(item.evidence, 500),
-        sourceMessageId: source.id,
-        recordedAt: new Date().toISOString(),
+        sourceStartMessageId: Number.isInteger(source.startId) ? source.startId : source.id,
+        sourceEndMessageId: source.id,
+        createdAt: existing?.createdAt || existing?.recordedAt || now,
+        updatedAt: now,
     };
 }
 
-function mergeWorldlineMemory(previous, incoming, maxItems = 120) {
-    const map = new Map();
-    for (const item of [...(Array.isArray(previous) ? previous : []), ...incoming]) {
+function mergeWorldlineMemory(previous, incoming, removeIds = [], maxItems = 120) {
+    const removed = new Set(removeIds.map(value => cleanText(value, 120)).filter(Boolean));
+    const result = (Array.isArray(previous) ? previous : [])
+        .filter(item => item?.text && !removed.has(cleanText(item?.id, 120)))
+        .map(item => ({ ...item }));
+
+    for (const item of incoming) {
         if (!item?.text) continue;
-        const key = item.id || item.text;
-        map.set(key, item);
+        const id = cleanText(item.id, 120);
+        const key = normalizeMemoryKey(item.key);
+        let index = -1;
+        if (id) index = result.findIndex(existing => cleanText(existing?.id, 120) === id);
+        if (index < 0 && key) index = result.findIndex(existing => normalizeMemoryKey(existing?.key) === key);
+        if (index < 0) index = result.findIndex(existing => existing?.text === item.text);
+        if (index >= 0) result[index] = { ...result[index], ...item };
+        else result.push(item);
     }
-    return [...map.values()].slice(-maxItems);
+
+    const deduped = [];
+    const seenIds = new Set();
+    const seenKeys = new Set();
+    const seenTexts = new Set();
+    for (const item of result) {
+        const id = cleanText(item?.id, 120);
+        const key = normalizeMemoryKey(item?.key);
+        const textKey = cleanText(item?.text, 700);
+        if ((id && seenIds.has(id)) || (key && seenKeys.has(key)) || (!id && !key && seenTexts.has(textKey))) continue;
+        if (id) seenIds.add(id);
+        if (key) seenKeys.add(key);
+        if (textKey) seenTexts.add(textKey);
+        deduped.push(item);
+    }
+    return deduped.slice(-maxItems);
 }
 
 function normalizeActionSuggestions(value, source) {
@@ -239,9 +338,10 @@ export function summarizeSimulationPayload(payload) {
         worldPatch: Boolean(meaningfulText(patch.location, 300) || meaningfulText(patch.summary, 1600) || (patch.time !== undefined && patch.time !== '' && patch.time !== null)),
         momentsUpsert: Array.isArray(payload?.moment_items_upsert) ? payload.moment_items_upsert.length : 0,
         momentsRemove: Array.isArray(payload?.moment_items_remove_ids) ? payload.moment_items_remove_ids.length : 0,
-        facts: Array.isArray(payload?.world_facts_upsert) ? payload.world_facts_upsert.length : 0,
+        factsUpsert: Array.isArray(payload?.world_facts_upsert) ? payload.world_facts_upsert.length : 0,
+        factsRemove: Array.isArray(payload?.world_facts_remove_ids) ? payload.world_facts_remove_ids.length : 0,
         people: Array.isArray(payload?.people_upsert) ? payload.people_upsert.length : 0,
-        memory: Array.isArray(payload?.worldline_memory_add) ? payload.worldline_memory_add.length : 0,
+        recentDynamic: Boolean(meaningfulText(payload?.simulation_digest, 1400)),
         actions: Array.isArray(payload?.action_suggestions) ? Math.min(payload.action_suggestions.length, 5) : 0,
     };
 }
@@ -265,10 +365,13 @@ export function applySimulationPayload(baseState, payload, source) {
     const removeMomentIds = new Set(stringArray(payload.moment_items_remove_ids, { maxItems: 60, maxLength: 120 }));
     const previousMoments = (Array.isArray(next.world.moments) ? next.world.moments : []).filter(item => !removeMomentIds.has(cleanText(item?.id, 120)));
     const incomingMoments = objectArray(payload.moment_items_upsert, item => normalizeMoment(item, source), 40);
-    next.world.moments = upsertByIdentity(previousMoments, incomingMoments, item => cleanText(item?.id, 120) || cleanText(item?.title, 140)).slice(-80);
+    next.world.moments = upsertByIdentity(previousMoments, incomingMoments, item => cleanText(item?.id, 120) || cleanText(item?.title, 140)).slice(-20);
 
-    const incomingFacts = objectArray(payload.world_facts_upsert, item => normalizeFact(item, source), 40);
-    next.world.facts = upsertByIdentity(next.world.facts, incomingFacts, item => cleanText(item?.id, 120) || cleanText(item?.key, 180)).slice(-160);
+    const removeFactIds = new Set(stringArray(payload.world_facts_remove_ids, { maxItems: 30, maxLength: 120 }));
+    const previousFacts = (Array.isArray(next.world.facts) ? next.world.facts : [])
+        .filter(item => !removeFactIds.has(cleanText(item?.id, 120)));
+    const incomingFacts = objectArray(payload.world_facts_upsert, item => normalizeFact(item, source), 30);
+    next.world.facts = mergeFacts(previousFacts, incomingFacts, 20);
 
     const previousPeople = Array.isArray(next.people) ? next.people : [];
     const personUpdates = objectArray(payload.people_upsert, item => {
@@ -279,9 +382,22 @@ export function applySimulationPayload(baseState, payload, source) {
     }, 80);
     next.people = upsertByIdentity(previousPeople, personUpdates, item => cleanText(item?.id, 120) || cleanText(item?.name, 120)).slice(0, 180);
 
-    next.memory = next.memory && typeof next.memory === 'object' ? next.memory : { worldline: [] };
-    const incomingMemory = objectArray(payload.worldline_memory_add, item => normalizeWorldlineMemory(item, source), 24);
-    next.memory.worldline = mergeWorldlineMemory(next.memory.worldline, incomingMemory, 120);
+    next.continuity = next.continuity && typeof next.continuity === 'object' ? next.continuity : { recentDynamics: [] };
+    const digest = meaningfulText(payload.simulation_digest, 1400);
+    if (digest) {
+        const now = new Date().toISOString();
+        const recent = Array.isArray(next.continuity.recentDynamics) ? next.continuity.recentDynamics : [];
+        recent.push({
+            id: slug(`${source.startId ?? source.id}|${source.id}|${source.rangeFingerprint ?? ''}`, 'dynamic'),
+            summary: digest,
+            sourceStartMessageId: Number.isInteger(source.startId) ? source.startId : source.id,
+            sourceEndMessageId: source.id,
+            createdAt: now,
+        });
+        next.continuity.recentDynamics = recent.slice(-5);
+    } else {
+        next.continuity.recentDynamics = (Array.isArray(next.continuity.recentDynamics) ? next.continuity.recentDynamics : []).slice(-5);
+    }
 
     next.guidance = next.guidance && typeof next.guidance === 'object' ? next.guidance : { actions: [], places: [] };
     next.guidance.actions = normalizeActionSuggestions(payload.action_suggestions, source);
@@ -299,6 +415,7 @@ export function applySimulationPayload(baseState, payload, source) {
         lastProcessedAssistantCount: Number.isInteger(source.assistantCount) ? source.assistantCount : 1,
         lastProcessedAssistantRangeFingerprint: String(source.rangeFingerprint ?? ''),
         lastProcessedAssistantCharacters: Number.isFinite(source.characters) ? Math.max(0, Math.trunc(source.characters)) : 0,
+        lastProcessedContentFilterSignature: String(source.contentFilterSignature ?? ''),
     };
     return next;
 }

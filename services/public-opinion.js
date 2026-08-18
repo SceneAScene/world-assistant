@@ -35,8 +35,7 @@ function knownLocationCorpus(state) {
 
 function hardenPlaces(state, places, reference = null) {
     const referenceCorpus = [
-        reference?.characterBase?.description,
-        reference?.characterBase?.scenario,
+        reference?.characterDescription?.description,
         ...(Array.isArray(reference?.entries) ? reference.entries.map(entry => entry?.content) : []),
     ].map(value => String(value ?? '').trim()).filter(Boolean).join('\n');
     const corpus = `${knownLocationCorpus(state)}\n${referenceCorpus}`;

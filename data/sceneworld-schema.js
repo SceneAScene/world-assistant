@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 10;
+export const SCENEWORLD_SCHEMA_VERSION = 13;
 
 function nowIso() {
     return new Date().toISOString();
@@ -11,6 +11,16 @@ function clone(value) {
 
 function text(value, max = 2000) {
     return String(value ?? '').trim().slice(0, max);
+}
+
+function stableId(value, prefix = 'item') {
+    const source = text(value, 900).toLowerCase();
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i += 1) {
+        hash ^= source.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `${prefix}_${(hash >>> 0).toString(36)}`;
 }
 
 function stripOuterDisplayWrappers(value, max = 2000) {
@@ -44,6 +54,17 @@ function normalizeKnowledge(items) {
     }).filter(item => item?.text);
 }
 
+
+function looksLikeUiStat(value) {
+    const valueText = text(value, 900);
+    if (!valueText) return false;
+    if (/(?:今日|本日|累计).{0,12}次数\s*[:：]?\s*[+-]?\d+(?:\.\d+)?\s*次?/i.test(valueText)) return true;
+    if (/(?:好感|亲密|欲望|快感|高潮|HP|MP|SAN|经验值?|属性值?|进度值?|等级|level).{0,12}[:：=]?\s*[+-]?\d/i.test(valueText)) return true;
+    if (/^[^。！？!?\n]{1,24}[:：]\s*[+-]?\d+(?:\.\d+)?\s*(?:次|点|级|%|％)?$/i.test(valueText)) return true;
+    if (/\b\d+\s*\/\s*\d+\b/.test(valueText)) return true;
+    return false;
+}
+
 function normalizeDetails(items) {
     if (!Array.isArray(items)) return [];
     const map = new Map();
@@ -52,6 +73,7 @@ function normalizeDetails(items) {
         const label = text(item.label ?? item.key, 80);
         const value = text(item.value ?? item.text, 700);
         if (!label || !value) continue;
+        if (looksLikeUiStat(label) || looksLikeUiStat(value) || looksLikeUiStat(`${label}：${value}`)) continue;
         map.set(label, { label, value });
     }
     return [...map.values()].slice(0, 24);
@@ -60,30 +82,42 @@ function normalizeDetails(items) {
 function normalizeWorldFacts(items) {
     if (!Array.isArray(items)) return [];
     const validPublicity = new Set(['private', 'trace', 'public']);
-    return items.map(item => {
+    const result = [];
+    for (const item of items) {
+        let normalized = null;
         if (typeof item === 'string') {
-            return {
-                id: '', key: text(item, 180), value: text(item, 900), validity: 'current',
+            const value = text(item, 900);
+            if (value) normalized = {
+                id: stableId(value, 'fact'), key: value.slice(0, 180), value, validity: 'current',
                 source: 'legacy', evidence: '', sourceMessageId: null,
-                publicity: 'private', publicHint: '',
+                publicity: 'private', publicHint: '', updatedAt: null,
+            };
+        } else if (item && typeof item === 'object') {
+            const publicityRaw = text(item.publicity, 30).toLowerCase();
+            normalized = {
+                id: text(item.id, 120) || stableId(item.key ?? item.subject ?? item.value ?? item.text, 'fact'),
+                key: text(item.key ?? item.subject, 180),
+                value: text(item.value ?? item.text, 900),
+                validity: text(item.validity, 40) || 'current',
+                source: text(item.source, 80) || 'simulation',
+                evidence: text(item.evidence, 500),
+                sourceMessageId: Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null,
+                publicity: validPublicity.has(publicityRaw) ? publicityRaw : 'private',
+                publicHint: text(item.publicHint ?? item.public_hint, 500),
+                updatedAt: text(item.updatedAt, 80) || null,
             };
         }
-        if (!item || typeof item !== 'object') return null;
-        const publicityRaw = text(item.publicity, 30).toLowerCase();
-        return {
-            id: text(item.id, 120),
-            key: text(item.key ?? item.subject, 180),
-            value: text(item.value ?? item.text, 900),
-            validity: text(item.validity, 40) || 'current',
-            source: text(item.source, 80) || 'simulation',
-            evidence: text(item.evidence, 500),
-            sourceMessageId: Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null,
-            publicity: validPublicity.has(publicityRaw) ? publicityRaw : 'private',
-            publicHint: text(item.publicHint ?? item.public_hint, 500),
-        };
-    }).filter(item => item && (item.key || item.value)).slice(-160);
+        if (!normalized || (!normalized.key && !normalized.value)) continue;
+        const id = normalized.id.toLowerCase();
+        const key = normalized.key.replace(/\s+/g, ' ').toLowerCase();
+        let index = -1;
+        if (id) index = result.findIndex(existing => String(existing.id || '').toLowerCase() === id);
+        if (index < 0 && key) index = result.findIndex(existing => String(existing.key || '').replace(/\s+/g, ' ').toLowerCase() === key);
+        if (index >= 0) result[index] = { ...result[index], ...normalized, id: result[index].id || normalized.id };
+        else result.push(normalized);
+    }
+    return result.slice(-20);
 }
-
 function normalizeMoments(items) {
     if (!Array.isArray(items)) return [];
     return items.map(item => {
@@ -97,28 +131,49 @@ function normalizeMoments(items) {
             text: body,
             sourceMessageId: Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null,
         };
-    }).filter(Boolean).slice(-80);
+    }).filter(Boolean).slice(-20);
 }
 
-function normalizeWorldlineMemory(items) {
+function normalizeRecentDynamics(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const summary = text(item.summary ?? item.text ?? item.value, 1400);
+        if (!summary) return null;
+        return {
+            id: text(item.id, 120) || stableId(`${item.sourceStartMessageId ?? ''}|${item.sourceEndMessageId ?? ''}|${summary}`, 'dynamic'),
+            summary,
+            sourceStartMessageId: Number.isInteger(item.sourceStartMessageId) ? item.sourceStartMessageId : null,
+            sourceEndMessageId: Number.isInteger(item.sourceEndMessageId) ? item.sourceEndMessageId : null,
+            createdAt: text(item.createdAt, 80) || null,
+        };
+    }).filter(Boolean).slice(-5);
+}
+
+function legacyMemoryAsFacts(items) {
     if (!Array.isArray(items)) return [];
     return items.map(item => {
         if (typeof item === 'string') {
-            const value = text(item, 700);
-            return value ? { id: '', text: value, reason: 'legacy', evidence: '', sourceMessageId: null, recordedAt: null } : null;
+            const value = text(item, 900);
+            return value ? { key: value.slice(0, 180), value, validity: 'persistent', publicity: 'private', source: 'legacy-memory' } : null;
         }
         if (!item || typeof item !== 'object') return null;
-        const value = text(item.text ?? item.value, 700);
+        const value = text(item.text ?? item.value, 900);
         if (!value) return null;
+        const status = text(item.status, 40);
         return {
             id: text(item.id, 120),
-            text: value,
-            reason: text(item.reason, 300),
+            key: text(item.key ?? item.memoryKey ?? item.memory_key, 180) || value.slice(0, 180),
+            value,
+            validity: status === '历史' ? 'historical' : (status === '长期' ? 'persistent' : 'current'),
+            source: 'legacy-memory',
             evidence: text(item.evidence, 500),
-            sourceMessageId: Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null,
-            recordedAt: text(item.recordedAt, 80) || null,
+            sourceMessageId: Number.isInteger(item.sourceEndMessageId) ? item.sourceEndMessageId : (Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null),
+            publicity: 'private',
+            publicHint: '',
+            updatedAt: text(item.updatedAt ?? item.createdAt, 80) || null,
         };
-    }).filter(Boolean).slice(-120);
+    }).filter(Boolean);
 }
 
 function normalizeOpinionNews(items) {
@@ -267,6 +322,7 @@ export function createEmptySceneWorldState() {
             lastProcessedAssistantCount: 0,
             lastProcessedAssistantRangeFingerprint: '',
             lastProcessedAssistantCharacters: 0,
+            lastProcessedContentFilterSignature: '',
         },
         world: {
             time: null,
@@ -284,8 +340,8 @@ export function createEmptySceneWorldState() {
             streetUpdatedAt: null,
             street: [],
         },
-        memory: {
-            worldline: [],
+        continuity: {
+            recentDynamics: [],
         },
         chronicle: [],
         guidance: {
@@ -342,6 +398,7 @@ export function normalizeSceneWorldState(value) {
                 lastProcessedAssistantCharacters: Number.isFinite(legacy.lastProcessedAssistantCharacters)
                     ? Math.max(0, Math.trunc(legacy.lastProcessedAssistantCharacters))
                     : 0,
+                lastProcessedContentFilterSignature: text(legacy.lastProcessedContentFilterSignature, 300),
             };
         })(),
         world: {
@@ -352,7 +409,10 @@ export function normalizeSceneWorldState(value) {
                 summary: text(source.world.summary, 1600),
             } : {}),
             moments: normalizeMoments(source.world?.moments),
-            facts: normalizeWorldFacts(source.world?.facts),
+            facts: normalizeWorldFacts([
+                ...legacyMemoryAsFacts(Array.isArray(oldMemory.worldline) ? oldMemory.worldline : legacyMemory),
+                ...(Array.isArray(source.world?.facts) ? source.world.facts : []),
+            ]),
         },
         people: Array.isArray(source.people) ? source.people.map(person => {
             if (!person || typeof person !== 'object') return null;
@@ -364,7 +424,7 @@ export function normalizeSceneWorldState(value) {
                 name: text(person.name, 120),
                 aliases: Array.isArray(person.aliases) ? person.aliases.map(v => text(v, 120)).filter(Boolean).slice(0, 20) : [],
                 location: text(person.location, 260),
-                status: text(person.status, 900),
+                status: looksLikeUiStat(person.status) ? '' : text(person.status, 900),
                 details: details.slice(0, 24),
                 knowledge: normalizeKnowledge(person.knowledge),
                 lastUpdatedMessageId: Number.isInteger(person.lastUpdatedMessageId) ? person.lastUpdatedMessageId : null,
@@ -391,10 +451,8 @@ export function normalizeSceneWorldState(value) {
                         : [])
             ),
         },
-        memory: {
-            worldline: normalizeWorldlineMemory(
-                Array.isArray(oldMemory.worldline) ? oldMemory.worldline : legacyMemory,
-            ),
+        continuity: {
+            recentDynamics: normalizeRecentDynamics(source.continuity?.recentDynamics),
         },
         chronicle: normalizeChronicle(source.chronicle),
         guidance: (() => {

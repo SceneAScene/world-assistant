@@ -1,35 +1,125 @@
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { generateRaw, saveSettingsDebounced } from '../../../../../script.js';
 export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
-    includeCharacterBase: true,
-    includeCharacterWorldInfo: true,
-    includeChatWorldInfo: true,
-    includeGlobalWorldInfo: false,
-    characterBaseMaxChars: 5000,
-    worldInfoMaxChars: 12000,
+    // 世界观参考：只额外提供当前角色的“角色描述（Description）”。
+    includeCharacterDescription: true,
+    characterDescriptionMaxChars: 5000,
+    // 世界书采用“当前聊天正在使用的世界书 + 用户逐本勾选”的白名单方式。
+    // 未出现过的世界书默认允许；用户取消勾选后会在这里留下 false 覆盖值。
+    worldBookSelection: Object.freeze({}),
+    worldInfoMaxChars: 16000,
+    // Only text inside these complete assistant-message tags is treated as narrative canon.
+    // This intentionally excludes status panels, chain-of-thought blocks, action menus and mini-theaters outside the body tag.
+    contentTags: Object.freeze(['content']),
+    contentFallbackToWholeMessage: false,
+    // 可选读取柏宝书公开只读接口提供的压缩长期历史。默认关闭，避免用户未确认就增加上下文。
+    useBaiBaiBook: false,
+    baibaiHistoryMaxChars: 8000,
 });
+
+function normalizeContentTagName(value) {
+    let text = String(value ?? '').trim();
+    if (!text) return '';
+    const pair = text.match(/^<\s*([A-Za-z][\w:.-]*)\s*>\s*<\/\s*\1\s*>$/i);
+    if (pair) text = pair[1];
+    else {
+        const opening = text.match(/^<\s*([A-Za-z][\w:.-]*)[^>]*>$/i);
+        if (opening) text = opening[1];
+        const closing = text.match(/^<\/\s*([A-Za-z][\w:.-]*)\s*>$/i);
+        if (closing) text = closing[1];
+    }
+    return /^[A-Za-z][\w:.-]*$/.test(text) ? text.toLowerCase() : '';
+}
+
+function normalizeContentTags(value) {
+    const source = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[\n,，;；]+/g);
+    const seen = new Set();
+    const result = [];
+    for (const item of source) {
+        const name = normalizeContentTagName(item);
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        result.push(name);
+        if (result.length >= 12) break;
+    }
+    return result;
+}
 
 export function getSceneWorldSettings() {
     const raw = extension_settings?.sceneworld;
-    return {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const merged = {
         ...DEFAULT_SCENEWORLD_SETTINGS,
-        ...(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}),
+        ...source,
+    };
+    const contentTags = normalizeContentTags(merged.contentTags);
+    const rawSelection = merged.worldBookSelection && typeof merged.worldBookSelection === 'object' && !Array.isArray(merged.worldBookSelection)
+        ? merged.worldBookSelection
+        : {};
+    const worldBookSelection = {};
+    for (const [name, enabled] of Object.entries(rawSelection)) {
+        const key = String(name ?? '').trim();
+        if (!key) continue;
+        worldBookSelection[key] = enabled !== false;
+    }
+    // alpha.11 以前叫 includeCharacterBase；升级后只保留角色描述，不再发送性格/场景字段。
+    const includeCharacterDescription = 'includeCharacterDescription' in source
+        ? source.includeCharacterDescription !== false
+        : source.includeCharacterBase !== false;
+    const characterDescriptionMaxChars = Number.isFinite(Number(source.characterDescriptionMaxChars))
+        ? Math.max(1000, Math.min(10000, Math.trunc(Number(source.characterDescriptionMaxChars))))
+        : Math.max(1000, Math.min(10000, Math.trunc(Number(source.characterBaseMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.characterDescriptionMaxChars)));
+    return {
+        ...merged,
+        includeCharacterDescription,
+        characterDescriptionMaxChars,
+        worldBookSelection,
+        worldInfoMaxChars: Math.max(2000, Math.min(32000, Math.trunc(Number(merged.worldInfoMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.worldInfoMaxChars))),
+        contentTags: contentTags.length ? contentTags : ['content'],
+        contentFallbackToWholeMessage: merged.contentFallbackToWholeMessage === true,
+        useBaiBaiBook: merged.useBaiBaiBook === true,
+        baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
     };
 }
 
 export function updateSceneWorldSettings(patch) {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return getSceneWorldSettings();
     const current = getSceneWorldSettings();
-    const next = { ...current };
-    for (const key of ['includeCharacterBase', 'includeCharacterWorldInfo', 'includeChatWorldInfo', 'includeGlobalWorldInfo']) {
+    const next = { ...current, worldBookSelection: { ...current.worldBookSelection } };
+    for (const key of ['includeCharacterDescription', 'contentFallbackToWholeMessage', 'useBaiBaiBook']) {
         if (key in patch) next[key] = patch[key] === true;
     }
-    for (const [key, min, max] of [['characterBaseMaxChars', 1000, 10000], ['worldInfoMaxChars', 1000, 24000]]) {
+    for (const [key, min, max] of [['characterDescriptionMaxChars', 1000, 10000], ['worldInfoMaxChars', 2000, 32000], ['baibaiHistoryMaxChars', 2000, 20000]]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }
+    if ('worldBookSelection' in patch && patch.worldBookSelection && typeof patch.worldBookSelection === 'object' && !Array.isArray(patch.worldBookSelection)) {
+        const normalizedSelection = {};
+        for (const [name, enabled] of Object.entries(patch.worldBookSelection)) {
+            const key = String(name ?? '').trim();
+            if (!key) continue;
+            normalizedSelection[key] = enabled !== false;
+        }
+        next.worldBookSelection = normalizedSelection;
+    }
+    if ('worldBookName' in patch) {
+        const name = String(patch.worldBookName ?? '').trim();
+        if (name) next.worldBookSelection[name] = patch.worldBookEnabled !== false;
+    }
+    if ('contentTags' in patch) {
+        const tags = normalizeContentTags(patch.contentTags);
+        next.contentTags = tags.length ? tags : ['content'];
+    }
+    // 清理旧版四开关，防止后续误以为它们仍参与世界书选择。
+    delete next.includeCharacterBase;
+    delete next.includeCharacterWorldInfo;
+    delete next.includeChatWorldInfo;
+    delete next.includeGlobalWorldInfo;
+    delete next.characterBaseMaxChars;
     extension_settings.sceneworld = next;
     saveSettingsDebounced?.();
-    return { ...next };
+    return { ...next, contentTags: [...next.contentTags], worldBookSelection: { ...next.worldBookSelection } };
 }
 
 

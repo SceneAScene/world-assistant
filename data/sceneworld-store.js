@@ -89,7 +89,7 @@ export async function updateSceneWorldState(mutator) {
 }
 
 export async function writeSceneWorldSection(section, value) {
-    const allowed = new Set(['world', 'people', 'publicOpinion', 'memory', 'chronicle', 'guidance', 'assistant', 'snapshots']);
+    const allowed = new Set(['world', 'people', 'publicOpinion', 'continuity', 'chronicle', 'guidance', 'assistant', 'snapshots']);
     if (!allowed.has(section)) throw new Error(`未知的 SceneWorld 数据区：${section}`);
     return updateSceneWorldState(state => {
         state[section] = value;
@@ -116,7 +116,7 @@ export function sceneWorldUsage() {
     const state = readRaw();
     if (!state) return { exists: false, totalBytes: 0, sections: {} };
     const sections = {};
-    for (const key of ['sync', 'world', 'people', 'publicOpinion', 'memory', 'chronicle', 'guidance', 'assistant', 'snapshots']) {
+    for (const key of ['sync', 'world', 'people', 'publicOpinion', 'continuity', 'chronicle', 'guidance', 'assistant', 'snapshots']) {
         sections[key] = estimateBytes(state[key]);
     }
     return { exists: true, totalBytes: estimateBytes(state), sections };

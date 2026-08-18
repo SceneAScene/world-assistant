@@ -2,9 +2,12 @@ import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
 import { getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { getCurrentWorldBookChoices } from '../platform/world-reference.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
 import { favoriteOpinionItem, removeChronicleItem } from '../services/chronicle.js';
+import { editContinuityFact, removeContinuityFact } from '../services/continuity.js';
+import { getBaiBaiBookStatus } from '../platform/baibai-book.js';
 import { createSceneWorldShell, removeSceneWorldShell } from '../ui/sceneworld-shell.js';
 
 export function createSceneWorldController({ version }) {
@@ -51,9 +54,13 @@ export function createSceneWorldController({ version }) {
                 refreshStreetOpinion: () => tasks.run('public-opinion-street', refreshStreetPublicOpinion),
                 putTextIntoChatInput,
                 getSettings: getSceneWorldSettings,
+                getWorldBooks: getCurrentWorldBookChoices,
                 updateSettings: updateSceneWorldSettings,
                 favoriteOpinion: (sourceType, sourceId) => tasks.run(`favorite:${sourceType}:${sourceId}`, () => favoriteOpinionItem(sourceType, sourceId)),
                 removeChronicle: id => tasks.run(`chronicle-remove:${id}`, () => removeChronicleItem(id)),
+                getBaiBaiStatus: getBaiBaiBookStatus,
+                removeContinuityFact: id => tasks.run(`continuity-remove:${id}`, () => removeContinuityFact(id)),
+                editContinuityFact: (id, value) => tasks.run(`continuity-edit:${id}`, () => editContinuityFact(id, value)),
                 isTaskRunning: key => tasks.isRunning(key),
             },
         });
