@@ -1,14 +1,14 @@
 {
-  "display_name": "世界背面",
+  "display_name": "世界动态",
   "loading_order": 20,
   "requires": [],
   "optional": [],
   "dependencies": [],
   "js": "bootstrap.js",
   "css": "style.css",
-  "author": "world-assistant（基于玲的原作重构）",
-  "version": "1.0.0",
+  "author": "world-assistant",
+  "version": "1.0.1",
   "auto_update": false,
   "minimum_client_version": "1.12.0",
-  "generate_interceptor": "worldBackstageGenerationInterceptor"
+  "generate_interceptor": "worldDynamicGenerationInterceptor"
 }

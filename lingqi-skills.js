@@ -9,7 +9,7 @@ const SKILLS = [
     { id: 'setting_guide', name: '设置引导', kind: 'query', category: '助手', risk: 'low' },
     { id: 'diagnose_world', name: '世界推演诊断', kind: 'query', category: '诊断', risk: 'low' },
     { id: 'diagnose_person', name: '人物停滞诊断', kind: 'query', category: '诊断', risk: 'low' },
-    { id: 'search_lingqi_chat', name: '智能助手聊天搜索', kind: 'query', category: '整理', risk: 'low' },
+    { id: 'search_lingqi_chat', name: '世界动态助手聊天搜索', kind: 'query', category: '整理', risk: 'low' },
     { id: 'update_setting', name: '安全设置代办', kind: 'action', category: '控制', risk: 'medium' },
     { id: 'set_person_simulation', name: '人物推演开关', kind: 'action', category: '控制', risk: 'medium' },
     { id: 'cancel_simulation', name: '停止当前推演', kind: 'action', category: '控制', risk: 'medium' },
@@ -20,7 +20,7 @@ const SKILLS = [
     { id: 'refresh_public_world', name: '巡查公共世界', kind: 'action', category: '控制', risk: 'medium', confirmation: true },
     { id: 'prioritize_person', name: '人物下轮优先', kind: 'action', category: '控制', risk: 'medium' },
     { id: 'catch_up_person', name: '人物近况补算', kind: 'action', category: '控制', risk: 'medium', confirmation: true },
-    { id: 'delete_lingqi_chat', name: '删除智能助手聊天', kind: 'action', category: '整理', risk: 'high', confirmation: true },
+    { id: 'delete_lingqi_chat', name: '删除世界动态助手聊天', kind: 'action', category: '整理', risk: 'high', confirmation: true },
 ];
 
 export const LINGQI_SKILL_REGISTRY = Object.freeze(
@@ -36,9 +36,9 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'world-engine',
         title: '世界引擎',
         keywords: ['世界引擎', '世界推演总开关', '启用世界', '世界推演'],
-        path: '世界背面 → 全局设置 → 常用 → 启用世界引擎',
+        path: '世界动态 → 全局设置 → 常用 → 启用世界引擎',
         keys: ['worldSimulationEnabled'],
-        meaning: '决定世界背面是否继续结算人物、暗流和世界状态。关闭不会删除已有数据。',
+        meaning: '决定世界动态是否继续结算人物、暗流和世界状态。关闭不会删除已有数据。',
         choices: ['开启：世界继续运行，可以手动或自动推演', '关闭：停止新的世界推演，已有状态原样保留'],
         recommendation: '平时建议开启；只在测试、排错或想暂时冻结后台世界时关闭。',
         delegable: true,
@@ -47,7 +47,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'auto-simulation',
         title: '自动运行',
         keywords: ['自动运行', '自动推演', '每轮推演'],
-        path: '世界背面 → 全局设置 → 常用 → 自动运行',
+        path: '世界动态 → 全局设置 → 常用 → 自动运行',
         keys: ['worldAutoEnabled'],
         meaning: '决定新正文出现后是否自动安排世界推演；关闭后仍可手动点“推演世界”。',
         choices: ['开启：新正文后自动排队推演', '关闭：只在你手动要求时推演'],
@@ -58,7 +58,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'prompt-injection',
         title: '正文注入',
         keywords: ['正文注入', '注入总开关', '把后台递给正文', '正文显露'],
-        path: '世界背面 → 全局设置 → 正文注入',
+        path: '世界动态 → 全局设置 → 正文注入',
         keys: ['worldPromptInjection'],
         meaning: '只决定后台资料是否交给正文模型看，不决定后台模块是否继续运行。',
         choices: ['总开关开启：再按时间、人物、暗流、回声、事实、记忆、舆情分别选择', '总开关关闭：后台照常保存和运行，但不向正文递交'],
@@ -69,7 +69,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'time-injection',
         title: '世界时间注入',
         keywords: ['世界时间注入', '时间注入', '最小锚点', '完整时间', '正文报时'],
-        path: '世界背面 → 全局设置 → 正文注入 → 世界时间',
+        path: '世界动态 → 全局设置 → 正文注入 → 世界时间',
         keys: ['injectionTimeMode'],
         meaning: '决定正文模型能看到多少世界时间信息。',
         choices: ['完整：日期、时段和具体时间都递给正文', '最小锚点：只保留维持时间连续性所需的信息', '关闭：完全不递时间，时间倒退或乱跳的风险更高'],
@@ -80,7 +80,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'people-injection',
         title: '人物状态注入',
         keywords: ['人物注入', '人物状态注入', '角色状态注入'],
-        path: '世界背面 → 全局设置 → 正文注入 → 「人物」· 当前状态',
+        path: '世界动态 → 全局设置 → 正文注入 → 「人物」· 当前状态',
         keys: ['injectionPeople'],
         meaning: '决定人物当前位置、行动和意图是否递给正文；关闭不等于人物停止后台生活。',
         choices: ['开启：正文更容易承接人物当前状态', '关闭：人物仍可后台推演，但正文模型看不到这份状态'],
@@ -91,7 +91,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'event-injection',
         title: '暗流与回声注入',
         keywords: ['暗流注入', '事件注入', '回声注入', '世界事实注入'],
-        path: '世界背面 → 全局设置 → 正文注入 → 「暗流」/「回声」/世界事实',
+        path: '世界动态 → 全局设置 → 正文注入 → 「暗流」/「回声」/世界事实',
         keys: ['injectionEvents', 'injectionEchoes', 'injectionFacts'],
         meaning: '分别控制进行中事件、已结算后果和权威世界事实是否递给正文。',
         choices: ['暗流：让正文知道镜头外正在形成的变化', '回声：让正文承接已经发生的后果', '世界事实：防止正文与已成立事实冲突'],
@@ -102,7 +102,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'memory',
         title: '长期记忆',
         keywords: ['记忆系统', '长期记忆', '记忆注入', '自动整理记忆', '记忆整理'],
-        path: '世界背面 → 当前聊天设置 → 长期记忆；注入开关在“全局设置 → 正文注入 → 长期记忆”',
+        path: '世界动态 → 当前聊天设置 → 长期记忆；注入开关在“全局设置 → 正文注入 → 长期记忆”',
         keys: ['memorySystemEnabled', 'injectionMemory', 'memoryAutoIndexInterval'],
         meaning: '“记忆系统”决定是否继续整理和保存；“记忆注入”只决定是否交给正文；“整理间隔”决定多久自动收拾一次。',
         choices: ['系统开启 + 注入开启：继续整理，也交给正文', '系统开启 + 注入关闭：继续整理，但正文暂时看不到', '系统关闭：不再整理新记忆，旧记忆仍保留'],
@@ -113,7 +113,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'public-opinion',
         title: '舆情与新闻',
         keywords: ['舆情', '新闻', '论坛', '自动舆情', '舆情注入'],
-        path: '世界背面侧栏 → 舆情；注入开关在“全局设置 → 正文注入 → 新闻与论坛”',
+        path: '世界动态侧栏 → 舆情；注入开关在“全局设置 → 正文注入 → 新闻与论坛”',
         keys: ['publicOpinionAutoEnabled', 'injectionPublicOpinion'],
         meaning: '自动舆情决定是否自动刷新公共声音；舆情注入只决定这些内容是否递给正文。',
         choices: ['自动开启：满足世界时间与公共事件条件时自动更新', '自动关闭：只在你手动“巡一圈”时刷新', '注入关闭：新闻仍可生成，但不会主动进入正文上下文'],
@@ -124,7 +124,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'player-recording',
         title: '记录玩家角色',
         keywords: ['记录玩家角色', '玩家角色', '记录 user', '记录我'],
-        path: '世界背面侧栏 → 人物 → 人物推演设置 → 记录玩家角色',
+        path: '世界动态侧栏 → 人物 → 人物推演设置 → 记录玩家角色',
         keys: ['recordPlayerCharacter'],
         meaning: '只记录正文已经明确发生的玩家位置、行动和客观状态，不读取或代写玩家内心。',
         choices: ['开启：玩家客观状态进入人物板块', '关闭：玩家不作为后台人物记录'],
@@ -136,7 +136,7 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'background-people',
         title: '强化后台人物推演',
         keywords: ['强化后台人物', '后台人物推演', 'npc 推演', '镜头外人物'],
-        path: '世界背面侧栏 → 人物 → 人物推演设置 → 强化后台人物推演',
+        path: '世界动态侧栏 → 人物 → 人物推演设置 → 强化后台人物推演',
         keys: ['enhancedBackgroundSimulation'],
         meaning: '让更多镜头外人物按世界时间参与结算；不是每轮给每个人单独请求一次 API。',
         choices: ['开启：镜头外人物更活跃，状态覆盖更广', '关闭：更克制地按相关性和到期条件结算'],
@@ -147,18 +147,18 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'connection',
         title: '连接与模型',
         keywords: ['api', '接口', '连接', '模型', '中转', '酒馆连接', '模块分流'],
-        path: '世界背面 → 全局设置 → 连接与模型',
+        path: '世界动态 → 全局设置 → 连接与模型',
         keys: [],
         meaning: '先选择跟随酒馆、酒馆配置或独立接口，再为世界推演、人物观测、记忆和舆情选择默认连接或单独分流。',
         choices: ['不需要独立接口：跟随酒馆当前连接', '需要固定模型：选择酒馆配置', '需要独立 URL / Key：保存独立接口，再在“模块 API 分流”里分配'],
-        recommendation: '不确定时先跟随酒馆；只有需要模型分工、独立额度或不同上下文能力时再分流。API Key 不交给智能助手聊天代填。',
+        recommendation: '不确定时先跟随酒馆；只有需要模型分工、独立额度或不同上下文能力时再分流。API Key 不交给世界动态助手聊天代填。',
         delegable: false,
     },
     {
         id: 'generation-limit',
         title: 'Token 与等待时间',
         keywords: ['token', '输出上限', '生成限制', '超时', '等待时间', 'timeout'],
-        path: '世界背面 → 全局设置 → 高级维护 → 生成限制',
+        path: '世界动态 → 全局设置 → 高级维护 → 生成限制',
         keys: ['maxOutputTokens', 'generationTimeoutMs'],
         meaning: '全局值为 0 表示自动；模块单独留 0 表示继承全局。Token 是输出上限，不是强制写满。',
         choices: ['自动：让插件按任务类型选择', '自定义全局：统一提高或限制', '按模块单独设置：只调整世界推演、人物观测、记忆或舆情'],
@@ -169,11 +169,11 @@ export const LINGQI_SETTING_GUIDES = Object.freeze([
         id: 'appearance',
         title: '界面字号与主题',
         keywords: ['界面字号', '字体', '字号', '界面明暗', '主题'],
-        path: '世界背面 → 全局设置 → 常用 → 外观',
+        path: '世界动态 → 全局设置 → 常用 → 外观',
         keys: ['uiScale', 'theme'],
-        meaning: '控制世界背面自己的字号与明暗主题，不改变 SillyTavern 正文字体。',
+        meaning: '控制世界动态自己的字号与明暗主题，不改变 SillyTavern 正文字体。',
         choices: ['字号：紧凑 / 标准 / 大字', '明暗：自动 / 日间 / 夜间'],
-        recommendation: '优先用“标准”；手机或阅读吃力时用“大字”。主界面从酒馆魔法棒中的“世界背面”打开。',
+        recommendation: '优先用“标准”；手机或阅读吃力时用“大字”。主界面从酒馆魔法棒中的“世界动态”打开。',
         delegable: false,
     },
 ]);
@@ -236,7 +236,7 @@ export function parseLingqiLocalQueryRequest(userText = '', people = []) {
     }
     const settingGuide = findLingqiSettingGuide(raw);
     if (settingGuide) return { type: 'setting_guide', guideId: settingGuide.id };
-    if (/(?:世界背面|后台|世界).{0,8}(?:什么情况|怎么样|状态总览|汇报)|(?:状态总览|汇报一下|助手汇报)/u.test(raw)) {
+    if (/(?:世界动态|后台|世界).{0,8}(?:什么情况|怎么样|状态总览|汇报)|(?:状态总览|汇报一下|助手汇报)/u.test(raw)) {
         return { type: 'status_overview' };
     }
     if (/(?:有哪些|列出|看看|查看).{0,6}(?:人物|角色)|(?:人物|角色)(?:清单|列表|有谁)/u.test(raw)) {
@@ -252,7 +252,7 @@ export function parseLingqiLocalQueryRequest(userText = '', people = []) {
         return { type: 'settings_overview' };
     }
 
-    const search = raw.match(/(?:找(?:一下|找)?|搜索|翻翻|查查).{0,8}(?:我们|智能助手)?(?:之前|以前)?(?:聊过|说过|提到过|提过)?(?:的)?[“「『]?([^”」』，。！？!]{2,80})[”」』]?(?:那段|的地方|在哪|记录)?/u)
+    const search = raw.match(/(?:找(?:一下|找)?|搜索|翻翻|查查).{0,8}(?:我们|世界动态助手)?(?:之前|以前)?(?:聊过|说过|提到过|提过)?(?:的)?[“「『]?([^”」』，。！？!]{2,80})[”」』]?(?:那段|的地方|在哪|记录)?/u)
         || raw.match(/(?:我们|你和我).{0,6}(?:聊过|说过|提到过|提过)[“「『]?([^”」』，。！？!]{2,80})[”」』]?(?:吗|没有|么|？|\?)/u);
     if (search) {
         const query = String(search[1] || '')
@@ -272,7 +272,7 @@ export function buildLingqiSkillMenuText() {
         '· 诊断：为什么没推演、后台是否卡住、某个人为什么很久没动',
         '· 控制：推演最新正文、巡查公共世界、开关安全设置、停止后台任务',
         '· 人物：开关后台推演、排到下一轮优先、补一次近况',
-        '· 整理：搜索或删除智能助手聊天、整理长期记忆、检查世界事实',
+        '· 整理：搜索或删除世界动态助手聊天、整理长期记忆、检查世界事实',
         '改人物核心事实、删长期记忆、重置世界和改 API，我不会只凭一句话直接动。',
     ].join('\n');
 }

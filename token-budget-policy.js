@@ -1,6 +1,6 @@
-const PATCH_KEY = Symbol.for('world_backstage.token_budget_policy.v1');
-const WORLD_TASK_MARKER = '<world_backstage_task_system>';
-const MODULE_ID = 'world_backstage';
+const PATCH_KEY = Symbol.for('world_dynamic.token_budget_policy.v1');
+const WORLD_TASK_MARKER = '<world_dynamic_task_system>';
+const MODULE_ID = 'world_dynamic';
 
 function positiveNumber(value) {
     const number = Number(value);
@@ -17,12 +17,12 @@ function containsWorldTaskMarker(value, depth = 0) {
     return Object.values(value).some(item => containsWorldTaskMarker(item, depth + 1));
 }
 
-function worldBackstageSettings(context) {
+function worldDynamicSettings(context) {
     return context?.extensionSettings?.[MODULE_ID] || null;
 }
 
 function hasExplicitTokenCap(context) {
-    const settings = worldBackstageSettings(context);
+    const settings = worldDynamicSettings(context);
     if (!settings) return false;
     if (positiveNumber(settings.maxOutputTokens)) return true;
 
@@ -43,7 +43,7 @@ function installFetchPolicy() {
     const originalFetch = globalThis.fetch;
     if (typeof originalFetch !== 'function' || originalFetch[PATCH_KEY]) return false;
 
-    const wrappedFetch = async function worldBackstageTokenAwareFetch(input, init) {
+    const wrappedFetch = async function worldDynamicTokenAwareFetch(input, init) {
         const rawBody = init?.body;
         if (typeof rawBody !== 'string') {
             return originalFetch.call(this, input, init);
@@ -86,7 +86,7 @@ function installFetchPolicy() {
         configurable: false,
         enumerable: false,
     });
-    Object.defineProperty(wrappedFetch, '__worldBackstageOriginalFetch', {
+    Object.defineProperty(wrappedFetch, '__worldDynamicOriginalFetch', {
         value: originalFetch,
         configurable: false,
         enumerable: false,
@@ -102,14 +102,14 @@ function installGenerateRawPolicy() {
 
     const wrapperCache = new WeakMap();
 
-    const wrappedGetContext = function worldBackstageTokenAwareGetContext(...args) {
+    const wrappedGetContext = function worldDynamicTokenAwareGetContext(...args) {
         const context = originalGetContext.apply(this, args);
         const raw = context?.generateRaw;
         if (!context || typeof raw !== 'function' || raw[PATCH_KEY]) return context;
 
         let wrappedRaw = wrapperCache.get(raw);
         if (!wrappedRaw) {
-            wrappedRaw = function worldBackstageTokenAwareGenerateRaw(options = {}) {
+            wrappedRaw = function worldDynamicTokenAwareGenerateRaw(options = {}) {
                 if (
                     options
                     && containsWorldTaskMarker(options.prompt)
@@ -150,7 +150,7 @@ function installGenerateRawPolicy() {
         configurable: false,
         enumerable: false,
     });
-    Object.defineProperty(wrappedGetContext, '__worldBackstageOriginalGetContext', {
+    Object.defineProperty(wrappedGetContext, '__worldDynamicOriginalGetContext', {
         value: originalGetContext,
         configurable: false,
         enumerable: false,

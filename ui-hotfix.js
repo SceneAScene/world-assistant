@@ -38,7 +38,7 @@ function repairWorldTimeButtons(root = document) {
 
 function repairAutoTruncationMessage(root = document) {
     if (!isAutomaticSimulationLimit()) return;
-    const panel = root.querySelector?.('#world-backstage-root') || root;
+    const panel = root.querySelector?.('#world-dynamic-root') || root;
     if (!panel?.querySelectorAll) return;
     for (const paragraph of panel.querySelectorAll('p')) {
         const text = String(paragraph.textContent || '').trim();

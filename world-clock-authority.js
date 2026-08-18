@@ -602,15 +602,15 @@ export function buildClockAuthorityLines(state, formattedClock, mode = 'full') {
             return [
                 `权威主世界时间：${state?.world?.name || '主世界'} · ${formattedClock?.stamp || `${dateText} ${exactTime}`}`,
                 `权威日期字段：year=${formattedClock?.year}; month=${formattedClock?.month}; day=${formattedClock?.dayOfMonth}; time=${formattedClock?.time || exactTime}`,
-                '时间一致性规则：主世界时间由世界背面维护，是本轮正文的事实源。若正文显示日期或钟点，必须与这里一致；不得保留旧日期、无因果倒退或自行另起一天。',
+                '时间一致性规则：主世界时间由世界动态维护，是本轮正文的事实源。若正文显示日期或钟点，必须与这里一致；不得保留旧日期、无因果倒退或自行另起一天。',
                 `若输出“时间与地点”栏，日期应写成：${formattedClock?.year}年${formattedClock?.month}月${formattedClock?.dayOfMonth}日。`,
-                '正文只负责叙事；本轮实际经过多久会在正文结束后由世界背面结算，不要为了推进剧情自行篡改世界钟。',
+                '正文只负责叙事；本轮实际经过多久会在正文结束后由世界动态结算，不要为了推进剧情自行篡改世界钟。',
             ];
         }
         if (precision === 'daypart' && daypart) {
             return [
                 `权威主世界时间：${dateText} · ${daypart}（具体钟点未确定）`,
-                '日期和时段是事实；正文不得把它写回旧日期、跳到别的日期，也不要擅自补造精确分钟。若本轮明确给出可靠钟点，世界背面会在正文后提升时间精度。',
+                '日期和时段是事实；正文不得把它写回旧日期、跳到别的日期，也不要擅自补造精确分钟。若本轮明确给出可靠钟点，世界动态会在正文后提升时间精度。',
             ];
         }
         return [
@@ -633,7 +633,7 @@ export function buildClockAuthorityLines(state, formattedClock, mode = 'full') {
     return [
         `权威主世界相对时间：${relativeLabel}${precision === 'minute' ? '' : '（精度有限）'}`,
         '世界钟已经存在，只是尚未绑定具体历法日期。正文不明确时间时继续沿用这个世界时间，不得因为缺少年月日就重新猜“现在是哪一天”。',
-        '若正文明确给出可靠年月日，世界背面会在正文结束后把现有故事日序映射到该历法；此前已经经过的时间不会被抹掉。',
+        '若正文明确给出可靠年月日，世界动态会在正文结束后把现有故事日序映射到该历法；此前已经经过的时间不会被抹掉。',
         precision === 'daypart'
             ? '当前只知道时段，不要擅自补造精确钟点。'
             : precision === 'minute'

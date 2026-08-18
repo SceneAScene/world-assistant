@@ -1,5 +1,5 @@
-const MODULE_ID = 'world_backstage';
-const ROOT_SELECTOR = '#world-backstage-root';
+const MODULE_ID = 'world_dynamic';
+const ROOT_SELECTOR = '#world-dynamic-root';
 const TAG_FIELD_SELECTOR = '[data-wb-tag-filter-field]';
 const DIRECT_SETTING_SELECTOR = '[data-wb-setting]';
 const SETTING_SECONDS_SELECTOR = '[data-wb-setting-seconds]';

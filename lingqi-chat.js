@@ -45,7 +45,7 @@ export function findLingqiChatMatches(messagesValue = [], query = '', maximum = 
 }
 
 function preview(message) {
-    const role = message?.role === 'user' ? '你' : '智能助手';
+    const role = message?.role === 'user' ? '你' : '世界动态助手';
     const text = String(message?.text || '').replace(/\s+/gu, ' ').trim();
     return `${role}：${text.length > 76 ? `${text.slice(0, 76)}…` : text}`;
 }
@@ -72,7 +72,7 @@ export function resolveLingqiChatDeletionPlan(messagesValue = [], action = {}, t
     const messages = Array.isArray(messagesValue) ? messagesValue : [];
     const mode = String(action.mode || '').trim().toLowerCase();
     if (!messages.length) {
-        return { ok: false, message: '这里已经没有更早的智能助手聊天可以删啦～' };
+        return { ok: false, message: '没有更早的世界动态助手聊天可删除。' };
     }
 
     let startIndex = 0;
@@ -121,7 +121,7 @@ export function resolveLingqiChatDeletionPlan(messagesValue = [], action = {}, t
         const indices = messages
             .map((message, index) => localDayKey(message.at) === key ? index : -1)
             .filter(index => index >= 0);
-        if (!indices.length) return { ok: false, message: '那一天这里没有智能助手聊天记录。' };
+        if (!indices.length) return { ok: false, message: '那一天这里没有世界动态助手聊天记录。' };
         startIndex = indices[0];
         endIndex = indices.at(-1);
     } else if (mode === 'topic') {
@@ -156,10 +156,10 @@ export function resolveLingqiChatDeletionPlan(messagesValue = [], action = {}, t
                 ? Math.max(selected.length, Number(totalMessageCount) || 0)
                 : selected.length,
         },
-        title: deleteAll ? '清空智能助手的聊天记录？' : `删除这 ${selected.length} 条聊天？`,
+        title: deleteAll ? '清空世界动态助手的聊天记录？' : `删除这 ${selected.length} 条聊天？`,
         detail: deleteAll
-            ? '会清空当前聊天里智能助手和你的全部聊天记录。智能助手的长期记忆、世界状态和小纸条都不会一起删。'
-            : '只删下面这段智能助手聊天。智能助手的长期记忆、世界状态和小纸条都不会一起删。',
+            ? '会清空当前聊天里世界动态助手和你的全部聊天记录。世界动态助手的长期记忆、世界状态和剧情引导都不会一起删。'
+            : '只删下面这段世界动态助手聊天。世界动态助手的长期记忆、世界状态和剧情引导都不会一起删。',
         confirmLabel: deleteAll ? '全部删掉' : '删掉这段',
         previewLines: [
             `起：${preview(selected[0])}`,
@@ -174,30 +174,30 @@ export function parseLingqiLocalChatDeleteRequest(userText = '') {
     if (!/(?:聊天记录|聊天)/u.test(raw) || !/(?:删掉|删除|清掉|清除|清空)/u.test(raw)) return null;
 
     if (
-        /(?:清空)(?:一下|掉)?(?:我们|我和你|和智能助手|智能助手)?(?:的)?(?:全部|所有)?(?:聊天记录|聊天)/u.test(raw)
-        || /(?:删掉|删除|清掉|清除)(?:一下)?(?:我们|我和你|和智能助手|智能助手)?(?:的)?(?:全部|所有)(?:的)?(?:聊天记录|聊天)/u.test(raw)
-        || /(?:把)?(?:我们|我和你|和智能助手|智能助手)?(?:的)?(?:全部|所有)(?:的)?(?:聊天记录|聊天)(?:都)?(?:删掉|删除|清掉|清除)/u.test(raw)
-        || /^(?:智能助手[，,]?\s*)?(?:帮我)?\s*(?:删掉|删除|清掉|清除)\s*(?:聊天记录|聊天)\s*[吧。！!]*$/u.test(raw)
+        /(?:清空)(?:一下|掉)?(?:我们|我和你|和世界动态助手|世界动态助手)?(?:的)?(?:全部|所有)?(?:聊天记录|聊天)/u.test(raw)
+        || /(?:删掉|删除|清掉|清除)(?:一下)?(?:我们|我和你|和世界动态助手|世界动态助手)?(?:的)?(?:全部|所有)(?:的)?(?:聊天记录|聊天)/u.test(raw)
+        || /(?:把)?(?:我们|我和你|和世界动态助手|世界动态助手)?(?:的)?(?:全部|所有)(?:的)?(?:聊天记录|聊天)(?:都)?(?:删掉|删除|清掉|清除)/u.test(raw)
+        || /^(?:世界动态助手[，,]?\s*)?(?:帮我)?\s*(?:删掉|删除|清掉|清除)\s*(?:聊天记录|聊天)\s*[吧。！!]*$/u.test(raw)
     ) return { type: 'delete_lingqi_chat', mode: 'all' };
 
-    const recent = raw.match(/(?:最近|刚才(?:的)?)\s*(\d{1,3})\s*(条|轮)(?:智能助手)?(?:聊天记录|聊天)?/u);
+    const recent = raw.match(/(?:最近|刚才(?:的)?)\s*(\d{1,3})\s*(条|轮)(?:世界动态助手)?(?:聊天记录|聊天)?/u);
     if (recent) {
         const count = Math.min(800, Math.max(1, Number.parseInt(recent[1], 10) || 1) * (recent[2] === '轮' ? 2 : 1));
         return { type: 'delete_lingqi_chat', mode: 'recent', count };
     }
 
     const dayMap = [
-        { re: /前天(?:的)?(?:智能助手)?(?:聊天记录|聊天)/u, day: 'day_before_yesterday' },
-        { re: /昨天(?:的)?(?:智能助手)?(?:聊天记录|聊天)/u, day: 'yesterday' },
-        { re: /今天(?:的)?(?:智能助手)?(?:聊天记录|聊天)/u, day: 'today' },
+        { re: /前天(?:的)?(?:世界动态助手)?(?:聊天记录|聊天)/u, day: 'day_before_yesterday' },
+        { re: /昨天(?:的)?(?:世界动态助手)?(?:聊天记录|聊天)/u, day: 'yesterday' },
+        { re: /今天(?:的)?(?:世界动态助手)?(?:聊天记录|聊天)/u, day: 'today' },
     ];
     for (const item of dayMap) {
         if (item.re.test(raw)) return { type: 'delete_lingqi_chat', mode: 'day', day: item.day };
     }
 
-    let between = raw.match(/^(?:智能助手[，,]?\s*)?(?:帮我)?\s*(?:把)?\s*从\s*(.{1,160}?)\s*(?:到|至)\s*(.{1,160}?)(?:之间|这一段|这段)?(?:的)?(?:聊天记录|聊天)?\s*(?:都)?(?:删掉|删除|清掉|清除)\s*[吧。！!]*$/u);
+    let between = raw.match(/^(?:世界动态助手[，,]?\s*)?(?:帮我)?\s*(?:把)?\s*从\s*(.{1,160}?)\s*(?:到|至)\s*(.{1,160}?)(?:之间|这一段|这段)?(?:的)?(?:聊天记录|聊天)?\s*(?:都)?(?:删掉|删除|清掉|清除)\s*[吧。！!]*$/u);
     if (!between) {
-        between = raw.match(/^(?:智能助手[，,]?\s*)?(?:帮我)?\s*(?:删掉|删除|清掉|清除)\s*(?:从\s*)?(.{1,160}?)\s*(?:到|至)\s*(.{1,160}?)(?:之间|这一段|这段)?(?:的)?(?:聊天记录|聊天)?\s*[吧。！!]*$/u);
+        between = raw.match(/^(?:世界动态助手[，,]?\s*)?(?:帮我)?\s*(?:删掉|删除|清掉|清除)\s*(?:从\s*)?(.{1,160}?)\s*(?:到|至)\s*(.{1,160}?)(?:之间|这一段|这段)?(?:的)?(?:聊天记录|聊天)?\s*[吧。！!]*$/u);
     }
     if (between) {
         return {
@@ -208,8 +208,8 @@ export function parseLingqiLocalChatDeleteRequest(userText = '') {
         };
     }
 
-    const sided = raw.match(/^(?:智能助手[，,]?\s*)?(?:帮我)?\s*(?:把)?\s*(.{1,180}?)\s*(之前|以前|之后|以后)(?:的)?(?:聊天记录|聊天)\s*(?:都)?(?:删掉|删除|清掉|清除)\s*[吧。！!]*$/u)
-        || raw.match(/^(?:智能助手[，,]?\s*)?(?:帮我)?\s*(?:删掉|删除|清掉|清除)\s*(.{1,180}?)\s*(之前|以前|之后|以后)(?:的)?(?:聊天记录|聊天)\s*[吧。！!]*$/u);
+    const sided = raw.match(/^(?:世界动态助手[，,]?\s*)?(?:帮我)?\s*(?:把)?\s*(.{1,180}?)\s*(之前|以前|之后|以后)(?:的)?(?:聊天记录|聊天)\s*(?:都)?(?:删掉|删除|清掉|清除)\s*[吧。！!]*$/u)
+        || raw.match(/^(?:世界动态助手[，,]?\s*)?(?:帮我)?\s*(?:删掉|删除|清掉|清除)\s*(.{1,180}?)\s*(之前|以前|之后|以后)(?:的)?(?:聊天记录|聊天)\s*[吧。！!]*$/u);
     if (sided) {
         return {
             type: 'delete_lingqi_chat',
@@ -218,8 +218,8 @@ export function parseLingqiLocalChatDeleteRequest(userText = '') {
         };
     }
 
-    const topic = raw.match(/(?:把)?(?:我们|我和你|和智能助手)?(?:之前|刚才|那次)?(?:聊过|聊|说过|说|讨论过|讨论)(?:的|过)?\s*([^，。！？!]{2,80}?)(?:那一段|那段|这段)(?:的)?(?:聊天记录|聊天)?(?:都)?(?:删掉|删除|清掉|清除)/u)
-        || raw.match(/(?:删掉|删除|清掉|清除)(?:我们|我和你|和智能助手)?(?:之前|刚才|那次)?(?:聊过|聊|说过|讨论过)(?:的|过)?\s*([^，。！？!]{2,80}?)(?:那一段|那段|这段)(?:的)?(?:聊天记录|聊天)?/u);
+    const topic = raw.match(/(?:把)?(?:我们|我和你|和世界动态助手)?(?:之前|刚才|那次)?(?:聊过|聊|说过|说|讨论过|讨论)(?:的|过)?\s*([^，。！？!]{2,80}?)(?:那一段|那段|这段)(?:的)?(?:聊天记录|聊天)?(?:都)?(?:删掉|删除|清掉|清除)/u)
+        || raw.match(/(?:删掉|删除|清掉|清除)(?:我们|我和你|和世界动态助手)?(?:之前|刚才|那次)?(?:聊过|聊|说过|讨论过)(?:的|过)?\s*([^，。！？!]{2,80}?)(?:那一段|那段|这段)(?:的)?(?:聊天记录|聊天)?/u);
     if (topic) return { type: 'delete_lingqi_chat', mode: 'topic', query: cleanLingqiChatAnchor(topic[1]) };
 
     return null;

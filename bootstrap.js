@@ -11,8 +11,8 @@ function start() {
     try {
         initializeWorldBackstage();
     } catch (error) {
-        console.error('[世界背面] 初始化失败', error);
-        globalThis.toastr?.error?.(`世界背面初始化失败：${error?.message || error}`);
+        console.error('[世界动态] 初始化失败', error);
+        globalThis.toastr?.error?.(`世界动态初始化失败：${error?.message || error}`);
     }
 }
 

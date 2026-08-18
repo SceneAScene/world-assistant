@@ -517,7 +517,7 @@ export function buildPublicOpinionPrompt(state, {
     };
 
     return [
-        '你是“世界背面”的世界舆情观察器。你只生成只读的新闻与论坛快照，不修改世界状态、人物认知、事件、记忆、时间或正文。不会写回人物认知，也不会触发新的世界变化。',
+        '你是“世界动态”的世界舆情观察器。你只生成只读的新闻与论坛快照，不修改世界状态、人物认知、事件、记忆、时间或正文。不会写回人物认知，也不会触发新的世界变化。',
         '只能依据下方 public_event_candidates。不得使用任何未提供的幕后事实，不得把私人行动或角色秘密写成公开消息。',
         'publicity=trace 的候选不是“已经公开的新闻事实”，而只是外界能察觉的一点表面迹象：只允许依据 public_hint 与 place 生成非官方论坛讨论；不得使用该事件真正标题、summary/result、隐藏原因或幕后人物信息，也不得生成新闻。',
         'publicity=public 的候选才允许生成新闻，而且只能使用 public_headline / public_summary / public_hint / place 中已经公开的信息。事件内部 title、summary、result 可能包含幕后细节，禁止直接复制进新闻。',
@@ -723,7 +723,7 @@ export function buildPublicOpinionSandboxPrompt(state, { clockLabel = '' } = {})
         world_background: asText(state?.world?.background || '', 1800),
     };
     return [
-        '你是“世界背面”的闲逛舆情生成器。这里是纯娱乐沙盒：可以生成与主线、现有事件完全无关的日常新闻、论坛水帖、小广告、城市八卦、奇怪热帖和生活碎片。',
+        '你是“世界动态”的闲逛舆情生成器。这里是纯娱乐沙盒：可以生成与主线、现有事件完全无关的日常新闻、论坛水帖、小广告、城市八卦、奇怪热帖和生活碎片。',
         '所有内容都必须标记为 non-canon 的娱乐快照：它们不是世界事实，不写入事件、记忆、人物认知、正文因果，也不能暗示真实主线发生了什么。',
         '可以参考 world_name / world_time / world_flavor / world_background 保持世界气质与底层规则，但不得偷用或续写当前主线、隐藏秘密、人物私事。尽量写普通社会生活，让这个世界显得有人在过日子。',
         '内容可以轻松、好笑、琐碎，宁可像真的社区闲逛，也不要每条都制造大事件。',

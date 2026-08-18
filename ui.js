@@ -12,7 +12,7 @@ const WB_PANEL_STABILITY_HINT = 'fold:7/2';
 
 const VIEWS = [
     { id: 'now', label: '此刻', eyebrow: 'NOW' },
-    { id: 'lingqi', label: '智能助手', eyebrow: 'ASSISTANT' },
+    { id: 'lingqi', label: '世界动态助手', eyebrow: 'ASSISTANT' },
     { id: 'people', label: '人物', eyebrow: 'PEOPLE' },
     { id: 'currents', label: '暗流', eyebrow: 'CURRENTS' },
     { id: 'echoes', label: '回声', eyebrow: 'ECHOES' },
@@ -107,8 +107,8 @@ function pluginReleaseStage(version = '') {
 function pluginDisplayVersion(version = '') {
     const text = String(version || '');
     if (/^2\.4\.\d+(?:-|$)/i.test(text)) return 'V2.4';
-    if (/^2\.3\.0-alpha\.\d+$/i.test(text)) return '世界背面 V2.3 · 体验版';
-    if (/^2\.2\.\d+$/i.test(text)) return '世界背面 V2.2';
+    if (/^2\.3\.0-alpha\.\d+$/i.test(text)) return '世界动态 V2.3 · 体验版';
+    if (/^2\.2\.\d+$/i.test(text)) return '世界动态 V2.2';
     return `${pluginReleaseStage(text)} ${text || '1.1.0'}`;
 }
 
@@ -664,7 +664,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
             : '';
         const missingTavern = missingTavernId && !tavernProfileById(missingTavernId);
         return [
-            `<option value="default" ${current === 'default' ? 'selected' : ''}>跟随世界背面默认连接</option>`,
+            `<option value="default" ${current === 'default' ? 'selected' : ''}>跟随世界动态默认连接</option>`,
             `<option value="tavern" ${current === 'tavern' ? 'selected' : ''}>跟随当前酒馆</option>`,
             missingTavern
                 ? `<option value="${escapeAttr(current)}" selected disabled>酒馆方案已不存在 · ${escapeHtml(missingTavernId)}</option>`
@@ -676,7 +676,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                 }).join('')}</optgroup>`
                 : '',
             apiProfiles.length
-                ? `<optgroup label="世界背面独立方案">${apiProfiles.map(profile => {
+                ? `<optgroup label="世界动态独立方案">${apiProfiles.map(profile => {
                     const value = `profile:${profile.id}`;
                     return `<option value="${escapeAttr(value)}" ${current === value ? 'selected' : ''}>${escapeHtml(profile.name)} · ${escapeHtml(profile.model || '未选模型')}</option>`;
                 }).join('')}</optgroup>`
@@ -687,9 +687,9 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
         const key = String(value);
         const maps = {
             apiMode: {
-                tavern: '使用 SillyTavern 当前主连接；主聊天切换模型后，世界背面会读取当前连接配置。',
-                'tavern-profile': '使用 SillyTavern Connection Manager 中已保存的连接方案；世界背面仅保存方案 ID，连接参数继续由酒馆管理。',
-                custom: '使用世界背面独立配置的 API，不占用主聊天连接配置。',
+                tavern: '使用 SillyTavern 当前主连接；主聊天切换模型后，世界动态会读取当前连接配置。',
+                'tavern-profile': '使用 SillyTavern Connection Manager 中已保存的连接方案；世界动态仅保存方案 ID，连接参数继续由酒馆管理。',
+                custom: '使用世界动态独立配置的 API，不占用主聊天连接配置。',
             },
             theme: {
                 auto: '根据系统或酒馆的明暗环境自动切换界面主题。',
@@ -817,7 +817,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
             aria-label="全局设置">
             <div class="wb-settings-sticky-head">
                 <div class="wb-popover-heading">
-                    <div><span>世界背面</span><h3>全局设置</h3></div>
+                    <div><span>世界动态</span><h3>全局设置</h3></div>
                     <button type="button" data-wb-action="toggle-settings" aria-label="关闭设置">×</button>
                 </div>
                 <nav class="wb-settings-tabs" aria-label="设置分类">
@@ -880,6 +880,79 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                     </div>
                 </div>
 
+                <div class="wb-settings-common-hint">
+                    <strong>常用设置</strong>
+                    <span>人物、暗流、记忆和舆情的运行设置位于各自页面；哪些后台信息需要提供给正文，请在「正文注入」中统一控制。</span>
+                </div>
+            </section>
+
+            <section class="wb-settings-section-body wb-settings-injection-section">
+                <div class="wb-injection-intro">
+                    <div>
+                        <span>正文注入 · 不注入不等于停止运行</span>
+                        <strong>这里只控制哪些后台信息提供给正文模型；对应的世界状态、人物、事件、记忆与舆情仍会按各自设置继续运行和保存。</strong>
+                    </div>
+                    <label class="wb-switch wb-injection-master">
+                        <input type="checkbox" data-wb-setting="worldPromptInjection"
+                            ${settings.worldPromptInjection ? 'checked' : ''}>
+                        <i></i>
+                    </label>
+                </div>
+
+                <div class="wb-injection-source-list ${settings.worldPromptInjection ? '' : 'is-master-off'}">
+                    <article class="wb-injection-source is-time">
+                        <div class="wb-injection-source-copy">
+                            <small class="wb-injection-source-board">来自「此刻」</small>
+                            <strong>世界时间</strong>
+                            <span>控制正文模型接收世界时间的详细程度。</span>
+                        </div>
+                        <div class="wb-time-mode-picker" role="group" aria-label="世界时间注入方式">
+                            <button type="button" data-wb-setting-button="injectionTimeMode" data-value="full"
+                                class="${settings.injectionTimeMode === 'full' ? 'is-active' : ''}">
+                                <strong>完整</strong><small>日期 + 时段 + 具体时间</small>
+                            </button>
+                            <button type="button" data-wb-setting-button="injectionTimeMode" data-value="anchor"
+                                class="${settings.injectionTimeMode === 'anchor' ? 'is-active' : ''}">
+                                <strong>最小锚点</strong><small>只提供连续性所需时间</small>
+                            </button>
+                            <button type="button" data-wb-setting-button="injectionTimeMode" data-value="off"
+                                class="${settings.injectionTimeMode === 'off' ? 'is-active' : ''}">
+                                <strong>关闭</strong><small>不提供时间信息</small>
+                            </button>
+                        </div>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「此刻」</small><strong>世界背景</strong><span>控制是否向正文提供当前世界背景与基础环境。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionWorldBackground" ${settings.injectionWorldBackground !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「人物」</small><strong>人物当前状态</strong><span>控制是否向正文提供人物位置、行动与相关状态。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionPeople" ${settings.injectionPeople !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「暗流」</small><strong>进行中事件与世界环境</strong><span>控制是否向正文提供镜头外正在发展的事件及环境变化。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionEvents" ${settings.injectionEvents !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「回声」</small><strong>已结算后果</strong><span>控制是否向正文提供已经成立的事件后果。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionEchoes" ${settings.injectionEchoes !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「此刻」</small><strong>世界事实</strong><span>控制是否向正文提供已经确认的世界事实。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionFacts" ${settings.injectionFacts !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「记忆」</small><strong>长期记忆</strong><span>关闭后记忆系统仍可继续整理，只是不向正文提供长期记忆。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionMemory" ${settings.injectionMemory !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                    <article class="wb-injection-source">
+                        <div class="wb-injection-source-copy"><small class="wb-injection-source-board">来自「舆情」</small><strong>新闻与论坛</strong><span>控制是否向正文提供与当前剧情相关的舆情信息。</span></div>
+                        <label class="wb-switch"><input type="checkbox" data-wb-setting="injectionPublicOpinion" ${settings.injectionPublicOpinion !== false ? 'checked' : ''}><i></i></label>
+                    </article>
+                </div>
+
+                <div class="wb-injection-behavior">
+                    <div class="wb-flat-section-heading"><div><strong>显露策略</strong><span>控制已经允许注入的信息以多积极的方式进入正文上下文。</span></div></div>
                     <div class="wb-setting-block">
                         <label>正文显露度</label>
                         <div class="wb-option-row">
@@ -898,7 +971,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                         </select>
                     </div>
                 </div>
-                <p class="wb-injection-bottom-note">关闭正文注入后，后台世界仍继续运行和保存，但不会向正文模型提供世界背面信息。</p>
+                <p class="wb-injection-bottom-note">关闭正文注入后，后台世界仍继续运行和保存，但不会向正文模型提供世界动态信息。</p>
             </section>
 
             <details class="wb-settings-group wb-settings-connection-section" data-settings-group="connection" ${sectionKey === 'connection' ? 'open' : groupOpen('connection')}>
@@ -918,9 +991,9 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                 </dl>
                 ${syncStatus?.error ? `<p>${escapeHtml(syncStatus.error)}</p>` : ''}
                 <small>${settings.apiMode === 'custom'
-                    ? '当前使用世界背面独立 API。'
+                    ? '当前使用世界动态独立 API。'
                     : settings.apiMode === 'tavern-profile'
-                        ? '当前使用酒馆已保存方案；世界背面仅保存方案 ID，参数变更会在下次调用时读取。'
+                        ? '当前使用酒馆已保存方案；世界动态仅保存方案 ID，参数变更会在下次调用时读取。'
                         : '当前跟随 SillyTavern 主连接。'}</small>
             </div>
 
@@ -1023,7 +1096,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                         </div>
                     </details>
                     <details class="wb-settings-subgroup" data-settings-subgroup="connection-profiles" ${subgroupOpen('connection-profiles')}>
-                        <summary><span>世界背面自存方案</span><small>${apiProfiles.length ? `${apiProfiles.length} 个方案` : '还没有保存方案'}</small></summary>
+                        <summary><span>世界动态自存方案</span><small>${apiProfiles.length ? `${apiProfiles.length} 个方案` : '还没有保存方案'}</small></summary>
                         <div class="wb-settings-subgroup-body">
                             ${apiProfiles.length ? `
                                 <div class="wb-api-profile-list">
@@ -1048,7 +1121,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                     </details>
 
                     <details class="wb-settings-subgroup" data-settings-subgroup="connection-routing" ${subgroupOpen('connection-routing')}>
-                        <summary><span>模块 API 分流</span><small>默认都跟随世界背面默认连接</small></summary>
+                        <summary><span>模块 API 分流</span><small>默认都跟随世界动态默认连接</small></summary>
                         <div class="wb-settings-subgroup-body">
                             <p>可为不同模块指定独立连接；未指定时使用默认连接。</p>
                             <div class="wb-api-route-grid">
@@ -1183,7 +1256,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                     </details>
 
                     <details class="wb-settings-subgroup" data-settings-subgroup="simulation-trigger" ${subgroupOpen('simulation-trigger')}>
-                        <summary><span>运行方式</span><small>世界背面要多勤快。</small></summary>
+                        <summary><span>运行方式</span><small>世界动态要多勤快。</small></summary>
                         <div class="wb-settings-subgroup-body">
             <div class="wb-setting-block">
                 <label>世界运转强度</label>
@@ -1234,7 +1307,7 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                 <label class="wb-custom-instruction">
                     自定义推演要求
                     <textarea data-wb-setting="customSimulationInstruction" maxlength="1000" rows="3"
-                        placeholder="例如：少制造新事件；多看看商会和港口。智能助手会按这个方向留意。">${escapeHtml(settings.customSimulationInstruction)}</textarea>
+                        placeholder="例如：少制造新事件；多看看商会和港口。世界动态助手会按这个方向留意。">${escapeHtml(settings.customSimulationInstruction)}</textarea>
                 </label>
             </div>
                         </div>
@@ -1600,10 +1673,18 @@ function renderSettings(state, settings, syncStatus, openGroups = new Set(), ope
                             <div class="wb-maintenance-card is-danger">
                                 <div>
                                     <strong>重置当前聊天数据</strong>
-                                    <p>清空当前聊天的世界背面数据；正文与 API / 模型配置不会删除。</p>
-                                    <small>不可撤回。要留着就先备份，旧世界也不会再从床底下诈尸。</small>
+                                    <p>清空当前聊天的世界动态数据；正文与 API / 模型配置不会删除。</p>
+                                    <small>不可撤回。需要保留时请先导出备份。</small>
                                 </div>
                                 <button type="button" class="is-danger" data-wb-action="reset-current-chat-data">一键重置</button>
+                            </div>
+                            <div class="wb-maintenance-card is-danger">
+                                <div>
+                                    <strong>清理世界动态数据</strong>
+                                    <p>删除当前聊天中的世界动态状态、分支快照，以及本插件的全局设置，然后停止本插件运行。</p>
+                                    <small>用于卸载前清理。其他聊天若曾使用世界动态，需要切换到对应聊天后再次执行。</small>
+                                </div>
+                                <button type="button" class="is-danger" data-wb-action="purge-plugin-data">清理并停用</button>
                             </div>
                         </div>
                     </details>
@@ -1768,7 +1849,7 @@ function renderModuleSettings(state, settings, syncStatus, scope = 'now', openSu
         ? settings.apiModuleRoutes
         : {};
     const routeOptions = (current = 'default') => [
-        `<option value="default" ${current === 'default' ? 'selected' : ''}>跟随世界背面默认连接</option>`,
+        `<option value="default" ${current === 'default' ? 'selected' : ''}>跟随世界动态默认连接</option>`,
         `<option value="tavern" ${current === 'tavern' ? 'selected' : ''}>跟随当前酒馆</option>`,
         ...apiProfiles.map(profile => {
             const value = `profile:${profile.id}`;
@@ -2070,7 +2151,7 @@ function renderModuleSettings(state, settings, syncStatus, scope = 'now', openSu
                     </div>
                     <label class="wb-number-setting">最多再试几次<input type="number" min="0" max="5" step="1" data-wb-setting="autoRetryCount" value="${escapeAttr(settings.autoRetryCount)}"></label>
                 </div>
-                <label class="wb-custom-instruction">自定义推演要求<textarea data-wb-setting="customSimulationInstruction" maxlength="1000" rows="3" placeholder="例如：少制造新事件；多看看商会和港口。智能助手会按这个方向留意。">${escapeHtml(settings.customSimulationInstruction)}</textarea></label>
+                <label class="wb-custom-instruction">自定义推演要求<textarea data-wb-setting="customSimulationInstruction" maxlength="1000" rows="3" placeholder="例如：少制造新事件；多看看商会和港口。世界动态助手会按这个方向留意。">${escapeHtml(settings.customSimulationInstruction)}</textarea></label>
             </div>
         </details>
     `;
@@ -2423,23 +2504,6 @@ export function sortPeopleForDisplay(people, activeEvents, presentPersonIds = ne
 
 
 
-const LINGQI_MASCOT_STATES = new Set(['idle', 'watch', 'note', 'happy', 'confused', 'hold']);
-
-function lingqiMascotState(lingqi = {}, _activeNotes = [], pending = null, override = '') {
-    // 模型硬状态永远优先于随机待机/点击反应。
-    if (lingqi.phase === 'running') return 'confused';
-    if (lingqi.phase === 'error') return 'hold';
-    if (LINGQI_MASCOT_STATES.has(override)) return override;
-    if (LINGQI_MASCOT_STATES.has(lingqi.mascotState)) return lingqi.mascotState;
-    if (pending) return 'note';
-    if (Array.isArray(lingqi.messages) && lingqi.messages.length) return 'watch';
-    return 'idle';
-}
-
-function lingqiMascotAssetState(state = 'idle') {
-    return LINGQI_MASCOT_STATES.has(state) ? state : 'idle';
-}
-
 function lingqiSupportCategoryLabel(category = 'unknown') {
     return {
         usage: '使用方式',
@@ -2459,7 +2523,7 @@ function lingqiSupportCategoryLabel(category = 'unknown') {
     }[String(category || 'unknown')] || '暂未归类';
 }
 
-function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openReadableKeys = new Set()) {
+function renderLingqiView(lingqi = {}, draft = '', _assistantUiState = '', openReadableKeys = new Set()) {
     const storedMessages = Array.isArray(lingqi.messages) ? lingqi.messages : [];
     const messages = storedMessages.slice(-120);
     const hiddenMessageCount = Math.max(0, storedMessages.length - messages.length);
@@ -2476,9 +2540,7 @@ function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openRead
     // the whole notes column stretched when there is no active paper on the board.
     const notesEmpty = activeNotes.length === 0;
     const lingqiBusy = lingqi.phase === 'running';
-    const mascotState = lingqiMascotState(lingqi, activeNotes, pending, mascotOverride);
-    lingqiMascotAssetState(mascotState); // 保留旧状态兼容，不再加载吉祥物图片。
-    const noteStatus = note => ({
+        const noteStatus = note => ({
         active: '',
         paused: '已暂停',
         completed: '已完成',
@@ -2490,15 +2552,11 @@ function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openRead
     return `
         <div class="wb-lingqi-layout">
             <div class="wb-lingqi-surface">
-                <div class="wb-lingqi-perch" aria-hidden="false">
-                    <div class="wb-lingqi-mascot is-assistant" aria-label="智能助手"><span>AI</span></div>
-                </div>
-
                 <section class="wb-lingqi-chat-card">
                     <div class="wb-lingqi-chat-log ${messages.length ? '' : 'is-empty'}" aria-live="polite">
                         ${hiddenMessageCount ? `
                             <div class="wb-lingqi-history-fold-note">
-                                更早的 ${hiddenMessageCount} 条聊天记录仍已保存，可直接让智能助手搜索或删除指定范围。
+                                更早的 ${hiddenMessageCount} 条聊天记录仍已保存，可通过世界动态助手搜索或删除指定范围。
                             </div>
                         ` : ''}
                         ${messages.length ? messages.map(message => `
@@ -2558,7 +2616,6 @@ function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openRead
                     ${pendingAction ? `
                         <div class="wb-lingqi-action-confirm" role="alertdialog"
                             aria-label="${escapeAttr(pendingAction.title || '确认助手操作')}">
-                            <span class="wb-lingqi-action-kaomoji" aria-hidden="true">AI</span>
                             <div>
                                 <strong>${escapeHtml(pendingAction.title || '确认执行该操作？')}</strong>
                                 <p>${escapeHtml(pendingAction.detail || '这个动作会调用后台模型。')}</p>
@@ -2607,7 +2664,7 @@ function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openRead
                                 ${noteStatus(note) ? `<em>${escapeHtml(noteStatus(note))}</em>` : ''}
                                 <div>
                                     ${note.status === 'active' ? `
-                                        <button type="button" data-wb-action="lingqi-pause-note" data-note-id="${escapeAttr(note.id)}" title="先已暂停面">压住</button>
+                                        <button type="button" data-wb-action="lingqi-pause-note" data-note-id="${escapeAttr(note.id)}" title="暂停剧情引导">暂停</button>
                                     ` : `
                                         <button type="button" data-wb-action="lingqi-resume-note" data-note-id="${escapeAttr(note.id)}" title="重新恢复">恢复</button>
                                     `}
@@ -2617,7 +2674,7 @@ function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openRead
                         </article>
                     `).join('') : `
                         <div class="wb-lingqi-note-empty" aria-label="暂时没有剧情引导">
-                            <span aria-hidden="true">AI</span>
+                            <span aria-hidden="true">◇</span>
                         </div>
                     `}
                 </div>
@@ -2625,8 +2682,8 @@ function renderLingqiView(lingqi = {}, draft = '', mascotOverride = '', openRead
                     <details class="wb-lingqi-note-box"
                         data-lingqi-readable-key="archive"${readableOpenAttr('archive')}>
                         <summary>
-                            <strong>小盒子里</strong>
-                            <span>${archivedNotes.length} 张收好的纸条</span>
+                            <strong>历史剧情引导</strong>
+                            <span>${archivedNotes.length} 条已归档</span>
                             <i aria-hidden="true"></i>
                         </summary>
                         <div class="wb-lingqi-note-box-body">
@@ -3935,7 +3992,7 @@ export function createWorldBackstageUI({
     pluginVersion = '',
 }) {
     const root = document.createElement('div');
-    root.id = 'world-backstage-root';
+    root.id = 'world-dynamic-root';
     document.body.appendChild(root);
 
     function syncVisualViewportInsets() {
@@ -3990,13 +4047,9 @@ export function createWorldBackstageUI({
     let panelEntrancePending = false;
     let publicOpinionMode = 'news';
     let lingqiDraft = '';
-    let lingqiMascotOverride = '';
-    let lingqiMascotTimer = null;
     let lingqiChatScrollState = { top: 0, atBottom: true, initialized: false };
     let lingqiNotesScrollTop = 0;
     let lingqiReadableOpenKeys = new Set();
-    let lingqiPetCount = 0;
-    let lingqiPetWindowAt = 0;
     let socialDraft = '';
     let socialGroupOpen = false;
     let socialGroupSelectedIds = new Set();
@@ -4008,87 +4061,6 @@ export function createWorldBackstageUI({
     let socialNoticeVisibleId = '';
     const socialNoticeShownIds = new Set();
 
-    function currentLingqiMascotState(override = '') {
-        const latest = getSyncStatus()?.lingqi || {};
-        const notes = Array.isArray(latest.notes) ? latest.notes : [];
-        const activeNotes = notes.filter(note => ['active', 'paused'].includes(note.status));
-        const pending = latest.pendingProposal && typeof latest.pendingProposal === 'object'
-            ? latest.pendingProposal
-            : null;
-        return lingqiMascotState(latest, activeNotes, pending, override);
-    }
-
-    function applyLingqiMascotPose(state = '') {
-        if (!isOpen || activeView !== 'lingqi') return false;
-        const mascot = root.querySelector('.wb-lingqi-mascot');
-        if (!mascot) return false;
-
-        const nextState = lingqiMascotAssetState(state || currentLingqiMascotState());
-        const image = mascot.querySelector('img');
-        const busyNow = getSyncStatus()?.lingqi?.phase === 'running';
-
-        for (const mascotState of Object.keys(LINGQI_MASCOT_ASSETS)) {
-            mascot.classList.remove(`is-${mascotState}`, `is-asset-${mascotState}`);
-        }
-        mascot.classList.add(`is-${nextState}`, `is-asset-${nextState}`);
-        mascot.dataset.mascotState = nextState;
-        mascot.title = busyNow ? '智能助手正在处理……' : '智能助手';
-        if (image) {
-            image.src = LINGQI_MASCOT_ASSETS[nextState] || LINGQI_MASCOT_ASSETS.idle;
-        }
-        return true;
-    }
-
-    function showLingqiMascotReaction(state, duration = 1200) {
-        lingqiMascotOverride = state;
-        window.clearTimeout(lingqiMascotTimer);
-        // Explicit user interaction may create one short reaction, but afterwards
-        // Lingqi always returns to the pose chosen by the latest reply/state.
-        applyLingqiMascotPose(currentLingqiMascotState(lingqiMascotOverride));
-        lingqiMascotTimer = window.setTimeout(() => {
-            lingqiMascotOverride = '';
-            applyLingqiMascotPose(currentLingqiMascotState());
-        }, duration);
-    }
-    let publicOpinionActionBusy = false;
-    let publicOpinionSandboxActionBusy = false;
-    let memorySearchTimer = null;
-    let memoryFilter = 'active';
-    let memoryClueRelationFilter = 'all';
-    let memoryQuery = '';
-    let memoryVisibleCount = 12;
-    let memorySelectedKeys = new Set();
-    let peopleSelectionMode = false;
-    let peopleSelectedIds = new Set();
-    let memoryEditor = null;
-    let personEditor = null;
-    let worldEditorOpen = false;
-    let recordEditor = null;
-    let settingsScrollTop = 0;
-    let openSettingsGroups = new Set();
-    let openSettingsSubgroups = new Set();
-    let openContentFolds = new Set();
-    const viewFoldStates = new Map();
-    let eventFormDraft = null;
-    let clockFormDraft = null;
-    let apiFormDraft = null;
-    let tagFilterDraftRules = null; // null = use settings; array may include empty draft cards
-    let tagFilterCandidates = [];
-    let worldbookQuery = '';
-    let worldbookOnlyPeople = false;
-    let worldbookOnlyEnabled = false;
-    let worldbookSelectedIds = new Set();
-    let worldbookListScrollTop = 0;
-    let worldbookSearchTimer = null;
-    let skipApiDraftCapture = false;
-    let skipTagFilterDraftCapture = false;
-    const viewScrollTop = new Map();
-    let orbDrag = null;
-    let suppressOrbClick = false;
-    let renderedRevision = Math.max(0, Number(getState()?.revision) || 0);
-    let lastSeenRevision = renderedRevision;
-    let dismissedNarrativePromptKey = '';
-    let freshOpenCheckFrame = 0;
 
     function notify(message, tone = 'normal') {
         toast = String(message || '');
@@ -4147,7 +4119,7 @@ export function createWorldBackstageUI({
             return result === undefined ? true : result;
         } catch (error) {
             const message = String(error?.message || error || '未知错误');
-            console.warn('[世界背面] 界面操作没有完成', error);
+            console.warn('[世界动态] 界面操作没有完成', error);
             notify(`操作没有完成：${message}`, 'error');
             return false;
         }
@@ -4549,7 +4521,7 @@ export function createWorldBackstageUI({
         if (activeView === 'lingqi') content = renderLingqiView(
             syncStatus.lingqi || {},
             lingqiDraft,
-            lingqiMascotOverride,
+            '',
             lingqiReadableOpenKeys,
         );
         if (activeView === 'people') {
@@ -4587,7 +4559,7 @@ export function createWorldBackstageUI({
             ${false ? `
             <button class="wb-world-orb ${isOpen ? 'is-open' : ''} ${orbProcessing ? 'is-processing' : ''} ${settings.orbPosition ? 'has-custom-position' : ''} ${orbEdgeHidden ? `is-edge-hidden is-edge-${orbEdgeSide}` : ''}" type="button"
                 style="${renderedOrbStyle}" data-wb-action="toggle-panel"
-                aria-label="${isOpen ? '收起世界背面' : '打开世界背面'}">
+                aria-label="${isOpen ? '收起世界动态' : '打开世界动态'}">
                 <span class="wb-orb-halo"></span>
                 <span class="wb-orb-ring ring-one"></span>
                 <span class="wb-orb-ring ring-two"></span>
@@ -4602,7 +4574,7 @@ export function createWorldBackstageUI({
                 style="${orbStyles.caption}" role="${captionCanSimulate ? 'dialog' : 'status'}" aria-live="polite"
                 ${captionCanSimulate ? 'aria-label="发现未推演正文"' : ''}>
                 <div class="wb-orb-caption-copy">
-                    <strong>世界背面</strong>
+                    <strong>世界动态</strong>
                     <span>${escapeHtml(captionText)}</span>
                 </div>
                 ${captionCanSimulate ? `
@@ -4619,12 +4591,12 @@ export function createWorldBackstageUI({
 
             ${isOpen ? `
                 <div class="wb-panel-scrim ${animatePanelEntrance ? 'is-opening' : ''}" data-wb-action="close-panel">
-                    <section class="wb-window" role="dialog" aria-modal="true" aria-label="世界背面">
+                    <section class="wb-window" role="dialog" aria-modal="true" aria-label="世界动态">
                         <header class="wb-window-header">
                             <div class="wb-brand">
                                 ${renderBrandMark()}
                                 <div>
-                            <span class="wb-brand-line"><h1>世界背面</h1><i>${escapeHtml(pluginDisplayVersion(pluginVersion))}</i></span>
+                            <span class="wb-brand-line"><h1>世界动态</h1><i>${escapeHtml(pluginDisplayVersion(pluginVersion))}</i></span>
                                     <p>镜头之外，世界仍在继续</p>
                                 </div>
                             </div>
@@ -4667,7 +4639,7 @@ export function createWorldBackstageUI({
                             </div>
                             <div class="wb-header-actions">
                                 <button type="button" class="wb-round-action wb-assistant-launch ${activeView === 'lingqi' ? 'is-active' : ''}"
-                                    data-wb-action="set-view" data-view="lingqi" aria-label="智能助手" title="智能助手">AI</button>
+                                    data-wb-action="set-view" data-view="lingqi" aria-label="世界动态助手" title="世界动态助手"><i class="fa-solid fa-comments" aria-hidden="true"></i></button>
                                 <button type="button" class="wb-round-action" data-wb-action="cycle-theme"
                                     aria-label="切换日间/夜间"><span class="wb-theme-glyph"></span></button>
                                 <button type="button" class="wb-round-action ${settingsOpen ? 'is-active' : ''}"
@@ -4712,7 +4684,6 @@ export function createWorldBackstageUI({
                                                 <i></i>${settings.publicOpinionRevealMode === 'relevant' ? '相关时显露' : '仅观察'}
                                             </div>
                                         ` : activeView === 'lingqi' ? `
-                                            <div class="wb-lingqi-header-badge" aria-label="智能助手">AI</div>
                                         ` : `
                                             <div class="wb-observer-switch">
                                                 <button type="button" data-wb-action="set-observer" data-mode="backstage"
@@ -4842,7 +4813,7 @@ export function createWorldBackstageUI({
                         data-page="${escapeAttr(socialNoticePage)}"
                         data-conversation-id="${escapeAttr(socialNotice.conversationId || '')}">
                         ${socialNoticePerson ? renderPersonAvatar(socialNoticePerson, 'is-social') : '<span class="wb-social-notice-avatar">讯</span>'}
-                        <span><small>${escapeHtml(socialNoticeLabel)}${socialNotices.length > 1 ? ` · 另有 ${socialNotices.length - 1} 条` : ''}</small><strong>${escapeHtml(socialNoticePerson?.name || '世界背面通讯')}</strong><em>${escapeHtml(socialNotice.text || '点开查看')}</em></span>
+                        <span><small>${escapeHtml(socialNoticeLabel)}${socialNotices.length > 1 ? ` · 另有 ${socialNotices.length - 1} 条` : ''}</small><strong>${escapeHtml(socialNoticePerson?.name || '世界动态通讯')}</strong><em>${escapeHtml(socialNotice.text || '点开查看')}</em></span>
                     </button>
                     <button class="wb-social-notice-close" type="button" data-wb-action="social-dismiss-notice" data-notice-id="${escapeAttr(socialNotice.id)}" aria-label="稍后再看">×</button>
                 </aside>
@@ -5106,43 +5077,23 @@ export function createWorldBackstageUI({
             const nextView = target.dataset.view || 'now';
             if (activeView === 'memory' && nextView !== 'memory') memorySelectedKeys = new Set();
             if (nextView !== 'lingqi') {
-                lingqiMascotOverride = '';
-                window.clearTimeout(lingqiMascotTimer);
             }
             activeView = nextView;
             moduleSettingsView = '';
             render();
             return;
         }
-        if (action === 'lingqi-pet') {
-            const now = Date.now();
-            if (now - lingqiPetWindowAt < 1800) lingqiPetCount += 1;
-            else lingqiPetCount = 1;
-            lingqiPetWindowAt = now;
-
-            const nextState = lingqiPetCount >= 4
-                ? 'hold'
-                : lingqiPetCount === 3
-                    ? 'happy'
-                    : 'watch';
-            showLingqiMascotReaction(nextState, nextState === 'hold' ? 1550 : 1050);
-            if (lingqiPetCount >= 4) lingqiPetCount = 0;
-            return;
-        }
-
         if (action === 'lingqi-copy-support-pack') {
             const copied = await invokeAction('lingqi-copy-support-pack', {
                 messageId: target.dataset.messageId || '',
             });
-            if (copied) showLingqiMascotReaction('watch', 900);
             return;
         }
 
         if (action === 'lingqi-confirm-note') {
             const completed = await invokeAction('lingqi-confirm-note');
             if (completed) {
-                notify('  贴住了', 'success');
-                showLingqiMascotReaction('happy', 1250);
+                notify('剧情引导已保留', 'success');
             } else {
                 render();
             }
@@ -5150,22 +5101,18 @@ export function createWorldBackstageUI({
         }
         if (action === 'lingqi-dismiss-note') {
             await invokeAction('lingqi-dismiss-note');
-            showLingqiMascotReaction('hold', 900);
             return;
         }
         if (action === 'lingqi-pause-note') {
             await invokeAction('lingqi-pause-note', { noteId: target.dataset.noteId || '' });
-            showLingqiMascotReaction('hold', 1000);
             return;
         }
         if (action === 'lingqi-resume-note') {
             await invokeAction('lingqi-resume-note', { noteId: target.dataset.noteId || '' });
-            showLingqiMascotReaction('note', 900);
             return;
         }
         if (action === 'lingqi-cancel-note') {
             await invokeAction('lingqi-cancel-note', { noteId: target.dataset.noteId || '' });
-            showLingqiMascotReaction('hold', 900);
             return;
         }
 
@@ -6204,15 +6151,36 @@ export function createWorldBackstageUI({
             return;
         }
 
+        if (action === 'purge-plugin-data') {
+            const first = globalThis.confirm?.(
+                '确定要清理“世界动态”在当前聊天中的全部数据和本插件全局设置吗？\n\n'
+                + '会删除当前聊天的世界状态、人物、事件、记忆、舆情、恢复点、分支快照，以及世界动态自己的 API / 模型设置。\n'
+                + '聊天正文不会删除。其他聊天中的世界动态数据不会自动清除。',
+            );
+            if (first === false) return;
+            const second = globalThis.confirm?.(
+                '最后确认：清理后本插件会停止运行，适合卸载前使用。\n\n确定继续吗？',
+            );
+            if (second === false) return;
+            const result = await invokeAction('purge-plugin-data');
+            if (result) {
+                notify(
+                    `世界动态数据已清理${Number(result.removedSnapshots) > 0 ? `，同时删除 ${result.removedSnapshots} 份分支快照` : ''}。现在可以刷新页面或卸载插件。`,
+                    'success',
+                );
+            }
+            return;
+        }
+
         if (action === 'reset-current-chat-data') {
             const first = globalThis.confirm?.(
-                '确定要重置“当前聊天”的全部世界背面数据吗？\n\n'
+                '确定要重置“当前聊天”的全部世界动态数据吗？\n\n'
                 + '会清除人物、事件、暗流、回声、记忆、舆情、观测、恢复点与分支快照。\n'
                 + '聊天正文和 API / 模型配置不会被删除。',
             );
             if (first === false) return;
             const second = globalThis.confirm?.(
-                '最后确认：这次重置不会创建恢复点，旧世界数据将不能从世界背面恢复。\n\n确定继续吗？',
+                '最后确认：这次重置不会创建恢复点，旧世界数据将不能从世界动态恢复。\n\n确定继续吗？',
             );
             if (second === false) return;
 
@@ -6687,7 +6655,6 @@ export function createWorldBackstageUI({
             window.clearTimeout(toastTimer);
             window.clearTimeout(memorySearchTimer);
             window.clearTimeout(closeTimer);
-            window.clearTimeout(lingqiMascotTimer);
             window.clearTimeout(socialNoticeTimer);
             window.cancelAnimationFrame?.(freshOpenCheckFrame);
             window.clearInterval(selfHealTimer);

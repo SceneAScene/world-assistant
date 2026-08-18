@@ -156,19 +156,19 @@ export function splitBackstagePrompt(prompt) {
     const text = String(prompt || '').trim();
     if (!text) {
         return {
-            systemPrompt: '你是“世界背面”的后台结构化任务执行器。严格执行本轮任务，只输出任务要求的结构化结果。',
+            systemPrompt: '你是“世界动态”的后台结构化任务执行器。严格执行本轮任务，只输出任务要求的结构化结果。',
             userPrompt: '',
         };
     }
 
     const lines = text.split(/\r?\n/);
     const firstLine = cleanText(lines[0]);
-    const looksLikeRoleDeclaration = /^你是[“"]?世界背面[”"]?的/.test(firstLine)
+    const looksLikeRoleDeclaration = /^你是[“"]?世界动态[”"]?的/.test(firstLine)
         && /(推演器|世界状态引擎|状态引擎|档案员|整理器|观测器)/.test(firstLine);
 
     if (!looksLikeRoleDeclaration) {
         return {
-            systemPrompt: '你是“世界背面”的后台结构化任务执行器。严格执行本轮任务，不续写主聊天正文。',
+            systemPrompt: '你是“世界动态”的后台结构化任务执行器。严格执行本轮任务，不续写主聊天正文。',
             userPrompt: text,
         };
     }
@@ -188,16 +188,16 @@ export function buildBackstageMessages(prompt, {
 
     if (internalCompat) {
         systemParts.push([
-            '<world_backstage_internal_compat_system>',
+            '<world_dynamic_internal_compat_system>',
             internalCompat,
-            '</world_backstage_internal_compat_system>',
+            '</world_dynamic_internal_compat_system>',
         ].join('\n'));
     }
     systemParts.push([
-        '<world_backstage_task_system>',
+        '<world_dynamic_task_system>',
         task.systemPrompt,
         '本轮后台任务指令优先决定输出格式与数据约束。不要生成主聊天正文。',
-        '</world_backstage_task_system>',
+        '</world_dynamic_task_system>',
     ].join('\n'));
 
     return [

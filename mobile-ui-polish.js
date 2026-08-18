@@ -1,5 +1,5 @@
-const STYLE_ID = 'world-backstage-mobile-ui-polish';
-const FOOTER_FIX_STYLE_ID = 'world-backstage-mobile-footer-fix';
+const STYLE_ID = 'world-dynamic-mobile-ui-polish';
+const FOOTER_FIX_STYLE_ID = 'world-dynamic-mobile-footer-fix';
 
 function installStylesheet(id, relativeUrl) {
     if (document.getElementById(id)) return;

@@ -1,4 +1,4 @@
-const STYLE_ID = 'world-backstage-mobile-character-search-scroll';
+const STYLE_ID = 'world-dynamic-mobile-character-search-scroll';
 
 function installCharacterSearchScrollStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -12,7 +12,7 @@ function installCharacterSearchScrollStyle() {
      * independently. This avoids the phone keyboard / narrow viewport hiding
      * candidate names below the search field.
      */
-    #world-backstage-root .wb-social-add-friend .wb-social-search-results {
+    #world-dynamic-root .wb-social-add-friend .wb-social-search-results {
         min-height: 0;
         max-height: clamp(180px, 38dvh, 420px);
         overflow-x: hidden;
@@ -26,20 +26,20 @@ function installCharacterSearchScrollStyle() {
         padding-bottom: 10px;
     }
 
-    #world-backstage-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar {
+    #world-dynamic-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar {
         width: 6px;
     }
 
-    #world-backstage-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar-track {
+    #world-dynamic-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar-track {
         background: transparent;
     }
 
-    #world-backstage-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar-thumb {
+    #world-dynamic-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar-thumb {
         border-radius: 999px;
         background: color-mix(in srgb, var(--wb-accent) 58%, transparent);
     }
 
-    #world-backstage-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar-thumb:active {
+    #world-dynamic-root .wb-social-add-friend .wb-social-search-results::-webkit-scrollbar-thumb:active {
         background: color-mix(in srgb, var(--wb-accent) 78%, transparent);
     }
 }

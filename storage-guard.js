@@ -26,7 +26,7 @@ function jsonByteLength(value) {
         // Conservative UTF-8 fallback for older WebViews.
         return unescape(encodeURIComponent(text)).length;
     } catch (error) {
-        console.warn('[世界背面][storage-guard] 无法估算快照体积', error);
+        console.warn('[世界动态][storage-guard] 无法估算快照体积', error);
         return Number.POSITIVE_INFINITY;
     }
 }
@@ -95,7 +95,7 @@ function compactBranchOverrides(store, chat) {
 
     if (totalBytes > HARD_BRANCH_OVERRIDE_BYTES) {
         console.warn(
-            `[世界背面][storage-guard] 受保护的分支快照仍占 ${(totalBytes / 1024 / 1024).toFixed(2)} MiB；` +
+            `[世界动态][storage-guard] 受保护的分支快照仍占 ${(totalBytes / 1024 / 1024).toFixed(2)} MiB；` +
             '已停止继续删除，避免破坏当前/近期分支。',
         );
     }
@@ -156,13 +156,13 @@ async function runStorageGuard(reason = 'scheduled') {
         const changed = branchChanged || swipeChanged;
         if (!changed) return false;
 
-        console.info(`[世界背面][storage-guard] 已整理快照存储 (${reason})`);
+        console.info(`[世界动态][storage-guard] 已整理快照存储 (${reason})`);
         if (typeof context.saveChat === 'function') {
             await context.saveChat();
         }
         return true;
     } catch (error) {
-        console.warn('[世界背面][storage-guard] 整理失败，已保留原数据', error);
+        console.warn('[世界动态][storage-guard] 整理失败，已保留原数据', error);
         return false;
     } finally {
         running = false;

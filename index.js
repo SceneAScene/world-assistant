@@ -143,12 +143,13 @@ import {
     parseLingqiLocalQueryRequest,
 } from './lingqi-skills.js';
 
+import { destroyMagicWandEntry } from './magic-wand-entry.js';
 const hostWindow = globalThis.parent && globalThis.parent !== globalThis ? globalThis.parent : globalThis;
 const hostDocument = hostWindow.document || globalThis.document;
 
-const PROMPT_KEY = 'world_backstage_authoritative_state';
-const SUPPORT_PROMPT_KEY = 'world_backstage_context_support';
-const PLUGIN_VERSION = '1.0.0';
+const PROMPT_KEY = 'world_dynamic_authoritative_state';
+const SUPPORT_PROMPT_KEY = 'world_dynamic_context_support';
+const PLUGIN_VERSION = '1.0.1';
 const DEFAULT_SETTINGS = Object.freeze({
     settingsVersion: 30,
     enabled: true,
@@ -695,7 +696,7 @@ function toast(message, tone = 'info') {
     }
     if (!globalThis.toastr) return;
     const method = ['success', 'warning', 'error', 'info'].includes(tone) ? tone : 'info';
-    globalThis.toastr[method](message, '世界背面', { preventDuplicates: true });
+    globalThis.toastr[method](message, '世界动态', { preventDuplicates: true });
 }
 
 function normalizeOrbPosition(value) {
@@ -1673,7 +1674,7 @@ function listTavernConnectionProfiles() {
             ? service.getSupportedProfiles()
             : rawTavernConnectionProfiles(context);
     } catch (error) {
-        console.warn('[世界背面] 读取酒馆连接方案失败，暂时只显示原始方案列表', error);
+        console.warn('[世界动态] 读取酒馆连接方案失败，暂时只显示原始方案列表', error);
         profiles = rawTavernConnectionProfiles(context);
     }
     const seen = new Set();
@@ -2089,7 +2090,7 @@ function activeBackgroundTaskLabels() {
     if (
         runtime.activeLingqi?.controller
         && !runtime.activeLingqi.controller.signal.aborted
-    ) labels.push('智能助手');
+    ) labels.push('世界动态助手');
     if (
         runtime.activeSocial?.controller
         && !runtime.activeSocial.controller.signal.aborted
@@ -2407,7 +2408,7 @@ function describeError(error) {
         }
     }
     if (!message || message === '<none>' || message === '[object Object]') {
-        return '推演接口没有返回具体错误；请先测试世界背面的连接，再重试最新正文';
+        return '推演接口没有返回具体错误；请先测试世界动态的连接，再重试最新正文';
     }
     return message.slice(0, 420);
 }
@@ -3110,7 +3111,7 @@ function scheduleSocialPulse(delay = 1200) {
             return;
         }
         void runSocialPulse(latestMessageId).catch(error => {
-            if (!isAbortError(error)) console.warn('[世界背面] 生活通讯脉冲失败', error);
+            if (!isAbortError(error)) console.warn('[世界动态] 生活通讯脉冲失败', error);
         });
     }, Math.max(700, Number(delay) || 1200));
     return true;
@@ -3242,11 +3243,11 @@ function socialConversationInjection(social, state, settings) {
         return [`[通信｜${conversation.title}｜成员：${members || '未知'}]`, ...messages];
     });
     return [
-        '<world_backstage_social_context>',
+        '<world_dynamic_social_context>',
         '以下是最近社交通信记录，仅代表人物说过或收到的内容，不是已结算的世界事实。',
         '可以用它保持语言和关系连续；不得因为聊天里有承诺、计划、位置或结果，就当成它已经发生。',
         ...lines.slice(-24),
-        '</world_backstage_social_context>',
+        '</world_dynamic_social_context>',
     ].join('\n');
 }
 
@@ -3478,7 +3479,7 @@ function scheduleDeferredPublicImpact(delay = 180, expectedChatToken = currentCh
         }
         runtime.pendingPublicImpact = false;
         void runPublicImpactPropagation({ quiet: true }).catch(error => {
-            if (!isAbortError(error)) console.warn('[世界背面] 公共事件影响传播失败', error);
+            if (!isAbortError(error)) console.warn('[世界动态] 公共事件影响传播失败', error);
         });
     }, delay);
 }
@@ -3495,7 +3496,7 @@ function scheduleDeferredPublicOpinion(delay = 220, expectedChatToken = currentC
         }
         runtime.pendingPublicOpinion = false;
         void generatePublicOpinionSnapshot({ allowDefer: true }).catch(error => {
-            if (!isAbortError(error)) console.warn('[世界背面] 延后舆情生成失败', error);
+            if (!isAbortError(error)) console.warn('[世界动态] 延后舆情生成失败', error);
         });
     }, delay);
 }
@@ -3518,7 +3519,7 @@ function cancelActiveSimulation() {
         try {
             getContext()?.stopGeneration?.();
         } catch (error) {
-            console.warn('[世界背面] 无法请求酒馆停止安静生成', error);
+            console.warn('[世界动态] 无法请求酒馆停止安静生成', error);
         }
     }
     setSyncStatus({
@@ -3532,7 +3533,7 @@ function cancelActiveSimulation() {
 
 function cancelActiveBackgroundTasks({ preserveLingqi = false } = {}) {
     const labels = activeBackgroundTaskLabels()
-        .filter(label => !(preserveLingqi && label === '智能助手'));
+        .filter(label => !(preserveLingqi && label === '世界动态助手'));
     const queuedWorldWork = runtime.queuedSimulations.size > 0 || Boolean(runtime.pendingManualSimulation);
     if (!labels.length && !queuedWorldWork) return { cancelled: false, labels: [] };
     const cancelledLabels = queuedWorldWork && !labels.includes('世界推演')
@@ -3586,7 +3587,7 @@ function cancelActiveBackgroundTasks({ preserveLingqi = false } = {}) {
         try {
             if (controller && !controller.signal?.aborted) controller.abort();
         } catch (error) {
-            console.warn('[世界背面] 停止后台任务时有一个控制器未能正常中止', error);
+            console.warn('[世界动态] 停止后台任务时有一个控制器未能正常中止', error);
         }
     }
 
@@ -3987,13 +3988,13 @@ async function backgroundSimulation(prompt, {
         throw new Error('当前酒馆版本没有提供安静生成接口');
     }
     if (taskKind === 'person-observation' && typeof context?.generateRaw !== 'function') {
-        throw new Error('当前酒馆版本没有提供独立上下文人物观测接口；请更新 SillyTavern 或为世界背面配置独立 API');
+        throw new Error('当前酒馆版本没有提供独立上下文人物观测接口；请更新 SillyTavern 或为世界动态配置独立 API');
     }
     if (taskKind === 'lingqi' && typeof context?.generateRaw !== 'function') {
-        throw new Error('当前酒馆版本没有提供独立上下文智能助手接口；请更新 SillyTavern 或为世界背面配置独立 API');
+        throw new Error('当前酒馆版本没有提供独立上下文世界动态助手接口；请更新 SillyTavern 或为世界动态配置独立 API');
     }
     if (taskKind === 'social' && typeof context?.generateRaw !== 'function') {
-        throw new Error('当前酒馆版本没有提供独立上下文社交回复接口；请更新 SillyTavern 或为世界背面配置独立 API');
+        throw new Error('当前酒馆版本没有提供独立上下文社交回复接口；请更新 SillyTavern 或为世界动态配置独立 API');
     }
 
     if (!foregroundNeutralTask) runtime.inBackgroundGeneration = true;
@@ -4012,7 +4013,7 @@ async function backgroundSimulation(prompt, {
         try {
             context?.stopGeneration?.();
         } catch (error) {
-            console.warn('[世界背面] 酒馆安静生成停止请求没有正常返回', error);
+            console.warn('[世界动态] 酒馆安静生成停止请求没有正常返回', error);
         }
     };
     if (allowGlobalStopOnAbort) {
@@ -4542,7 +4543,7 @@ directorNotes: normalizeLingqiState(getStore().lingqi || emptyLingqiState()).not
             ? '本次推演内容超过当前输出上限，模型返回被截断；本轮没有提交任何世界状态。可在「生成限制」提高世界推演 Token 上限后再试。'
             : errorMessage;
         if (issueType === 'output-limit') {
-            console.warn('[世界背面] 世界推演输出被截断，已丢弃未闭合结果：', errorMessage);
+            console.warn('[世界动态] 世界推演输出被截断，已丢弃未闭合结果：', errorMessage);
         }
         const target = taskStillCurrent()
             ? locateTargetBranch(messageId, swipeId, expectedHash)
@@ -4632,7 +4633,7 @@ function manualSimulationBlockerLabels() {
         runtime.activeLingqi?.controller
         && !runtime.activeLingqi.controller.signal.aborted
     ) {
-        labels.push('智能助手');
+        labels.push('世界动态助手');
     }
     // Connection tests and a few short maintenance calls only expose the shared
     // busy counter. They still should not race a manual world simulation.
@@ -4923,7 +4924,7 @@ function scheduleAutoSync(messageId, type) {
     if (!settings.enabled || !settings.worldSimulationEnabled) {
         setSyncStatus({
             phase: 'idle',
-            message: settings.enabled ? '世界推演模块已停用' : '世界背面当前未启用',
+            message: settings.enabled ? '世界推演模块已停用' : '世界动态当前未启用',
             error: '',
         });
         return;
@@ -5164,7 +5165,7 @@ async function runPreGenerationConsistencyBarrier(_chat, _contextSize, _abort, t
         || runtime.queuedSimulations.size > 0
     );
     const pluginWorkAlreadyRunning = coreAlreadyRunning || activeBackgroundTaskLabels()
-        .some(label => label !== '智能助手');
+        .some(label => label !== '世界动态助手');
 
     // Consistency Barrier is a gate, not a hidden auto-run trigger.
     // It may wait for work that is already due/running, but it must not bypass
@@ -5218,7 +5219,7 @@ async function runPreGenerationConsistencyBarrier(_chat, _contextSize, _abort, t
     offerCurrentInjection();
 }
 
-globalThis.worldBackstageGenerationInterceptor = runPreGenerationConsistencyBarrier;
+globalThis.worldDynamicGenerationInterceptor = runPreGenerationConsistencyBarrier;
 
 function onGenerationStarted(type, _options, dryRun) {
     if (dryRun || ['quiet', 'impersonate', 'first_message'].includes(type)) return;
@@ -5227,7 +5228,7 @@ function onGenerationStarted(type, _options, dryRun) {
     toast(
         offer.rerollBase
             ? '旧重 roll 分支的资料已撤回；本轮正文收到的是重 roll 前的世界状态。'
-            : '世界背面资料已递给本轮正文。',
+            : '世界动态资料已递给本轮正文。',
         'success',
     );
 }
@@ -5491,7 +5492,7 @@ function onChatChanged() {
     };
     runtime.lingqiStatus = {
         phase: 'idle',
-        message: '智能助手已就绪。',
+        message: '世界动态助手已就绪。',
         error: '',
     };
     runtime.syncStatus = {
@@ -5832,7 +5833,7 @@ function buildDiagnosticReport() {
         privacy: '不包含 API Key、接口地址、聊天正文、角色身份锚点或自定义提示词。',
         generatedAt: new Date().toISOString(),
     };
-    return `世界背面诊断信息（可安全分享）\n${JSON.stringify(report, null, 2)}`;
+    return `世界动态诊断信息（可安全分享）\n${JSON.stringify(report, null, 2)}`;
 }
 
 async function copyDiagnosticReport() {
@@ -5860,7 +5861,7 @@ async function copyDiagnosticReport() {
 
 function exportState() {
     const payload = {
-        format: 'world-backstage-state',
+        format: 'world-dynamic-state',
         version: SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
         state: getState(),
@@ -5872,7 +5873,7 @@ function exportState() {
         .replace(/[\\/:*?"<>|]+/g, '_')
         .slice(0, 60);
     link.href = url;
-    link.download = `世界背面_${safeWorldName}.json`;
+    link.download = `世界动态_${safeWorldName}.json`;
     hostDocument.body.appendChild(link);
     link.click();
     link.remove();
@@ -7001,7 +7002,7 @@ async function bootstrapWorldFromHistory() {
             phase: 'success',
             processed: chatLength,
             total: chatLength,
-            message: '历史回溯完成。世界背面已经跟上这段聊天',
+            message: '历史回溯完成。世界动态已经跟上这段聊天',
         };
         refreshInjection();
         runtime.ui?.render();
@@ -7081,7 +7082,7 @@ async function scanStoryMemoryHistory({
             );
             if (confirmed === false) return false;
         }
-        // 智能助手代办时，用户刚刚已经明确说“整理记忆”，无需再确认第二遍；
+        // 世界动态助手代办时，用户刚刚已经明确说“整理记忆”，无需再确认第二遍；
         // 但恢复点仍然照常建立，数据安全不打折。
         const protectedStore = addRecoveryPoint(getStore(), {
             reason: 'before-memory-maintenance',
@@ -7481,10 +7482,10 @@ function personObservationLooksComplete(text) {
 
 async function generateIndependentPersonObservation(prompt, person, settings, { signal } = {}) {
     runtime.syncStatus.method = settings.apiMode === 'custom'
-        ? '人物观测 · 世界背面独立接口'
+        ? '人物观测 · 世界动态独立接口'
         : settings.apiMode === 'tavern-profile'
             ? '人物观测 · 酒馆已保存方案'
-            : '人物观测 · 世界背面独立上下文';
+            : '人物观测 · 世界动态独立上下文';
 
     const requestedAttempts = [
         { maxTokens: 4096, temperature: 0.75 },
@@ -7551,7 +7552,7 @@ async function generateIndependentPersonObservation(prompt, person, settings, { 
             if (!truncated) throw error;
             lastTruncation = error;
             if (index >= attempts.length - 1) break;
-            console.warn(`[世界背面] 人物观测疑似截断，自动提高输出额度重试（${attempt.maxTokens} → ${attempts[index + 1].maxTokens}）`);
+            console.warn(`[世界动态] 人物观测疑似截断，自动提高输出额度重试（${attempt.maxTokens} → ${attempts[index + 1].maxTokens}）`);
         }
     }
 
@@ -7739,7 +7740,7 @@ async function generatePublicOpinionSnapshotInternal({ allowDefer = true, ensure
             candidates = eligiblePublicOpinionEvents(state);
         } catch (error) {
             if (!isAbortError(error)) {
-                console.warn('[世界背面] 刷新舆情前的公共影响传播失败，将沿用上一份已确认状态', error);
+                console.warn('[世界动态] 刷新舆情前的公共影响传播失败，将沿用上一份已确认状态', error);
             }
         }
     }
@@ -8373,7 +8374,7 @@ function buildLingqiButlerContext(userText = '') {
                 message: String(sync.message || '').slice(0, 280),
                 error: String(sync.error || '').slice(0, 360),
             },
-            active: (sync.activeBackgroundTasks || []).filter(label => label !== '智能助手'),
+            active: (sync.activeBackgroundTasks || []).filter(label => label !== '世界动态助手'),
             queuePendingTurns: sync.queue?.pendingTurns || 0,
             memory: {
                 phase: sync.memory?.phase || 'idle',
@@ -8489,20 +8490,20 @@ function finalizeLingqiTriage(response, actionResults = [], userText = '') {
         reason: String(source.reason || response?.helpReason || '').trim().slice(0, 500),
     };
 
-    // 智能助手不能把“教用户怎么用 / 改一个设置”这种问题甩给维护者。
+    // 世界动态助手不能把“教用户怎么用 / 改一个设置”这种问题甩给维护者。
     if (triage.route === 'mama' && ['usage', 'settings'].includes(triage.category)) {
         triage.route = 'self_service';
         triage.owner = 'user';
         if (!triage.nextStep) {
-            triage.nextStep = '先按智能助手上面的说明检查对应开关或操作入口；如果实际行为仍和说明不一致，再回来让智能助手继续查。';
+            triage.nextStep = '先按世界动态助手上面的说明检查对应开关或操作入口；如果实际行为仍和说明不一致，再回来让世界动态助手继续查。';
         }
     }
 
-    // 模型已经判断责任在用户自己 / 第三方时，智能助手不能仍然把纸条丢给维护者。
+    // 模型已经判断责任在用户自己 / 第三方时，世界动态助手不能仍然把纸条丢给维护者。
     if (triage.route === 'mama' && triage.owner === 'user') {
         triage.route = 'self_service';
         if (!triage.nextStep) {
-            triage.nextStep = '先按智能助手给出的说明把本地设置或操作修正；如果修正后仍复现，再回来继续查。';
+            triage.nextStep = '先按世界动态助手给出的说明把本地设置或操作修正；如果修正后仍复现，再回来继续查。';
         }
     }
     if (triage.route === 'mama' && triage.owner === 'provider') {
@@ -8544,7 +8545,7 @@ function finalizeLingqiTriage(response, actionResults = [], userText = '') {
         }
     }
 
-    // 如果智能助手刚刚已经成功代办了一个动作，就别同时写纸条告状。
+    // 如果世界动态助手刚刚已经成功代办了一个动作，就别同时写纸条告状。
     const actionSucceeded = actionResults.some(text => (
         /已经|开始了|打开|关掉|停下|检查完了|最新一层/u.test(String(text || ''))
         && !/没弄成|不敢|没认准|没找到|没有拿到结果|关着|先等/u.test(String(text || ''))
@@ -8587,7 +8588,7 @@ function buildLingqiSupportPack(userText = '', triage = {}) {
         .slice(0, 4);
     const why = String(triage.reason || '').trim().slice(0, 600);
     return [
-        '世界背面诊断信息',
+        '世界动态诊断信息',
         `问题类型：${category}`,
         `一句话：${summary}`,
         checked.length ? `已检查：${checked.join('；')}` : '',
@@ -8637,7 +8638,7 @@ function findLingqiPersonTarget(action) {
 function lingqiDeletionSourceMessages() {
     const state = normalizeLingqiState(getStore().lingqi || emptyLingqiState());
     const messages = [...state.messages];
-    // 删除请求本身刚刚才写入智能助手聊天；定位“最近/全部/范围”时不要把这句请求
+    // 删除请求本身刚刚才写入世界动态助手聊天；定位“最近/全部/范围”时不要把这句请求
     // 当成用户想删的历史记录。真正执行 all 时仍会把整个聊天清空。
     if (messages.at(-1)?.role === 'user') messages.pop();
     return messages;
@@ -8716,7 +8717,7 @@ function sealPendingLingqiChatDeletionSnapshot() {
     pending.action.chatSnapshotSignature = lingqiChatSnapshotSignature(state.messages);
     if (pending.action.deleteAll) {
         pending.action.resolvedCount = state.messages.length;
-        pending.title = `清空智能助手的 ${state.messages.length} 条聊天记录？`;
+        pending.title = `清空世界动态助手的 ${state.messages.length} 条聊天记录？`;
     }
     return true;
 }
@@ -8773,7 +8774,7 @@ async function executeLingqiButlerActions(actions = [], { confirmed = false } = 
                 currentStore.lingqi = state;
                 saveStore(currentStore, { immediate: true });
                 results.push(removed
-                    ? `删掉了 ${removed} 条智能助手聊天。长期记忆没动。`
+                    ? `删掉了 ${removed} 条世界动态助手聊天。长期记忆没动。`
                     : '那段记录已经不在这里了，我没有再乱删别的。');
                 continue;
             }
@@ -8872,7 +8873,7 @@ async function executeLingqiButlerActions(actions = [], { confirmed = false } = 
                 const socialStore = getStore();
                 socialStore.social = removeSocialFriend(socialStore.social, socialStore.currentState, person.id, {
                     source: 'lingqi-user-request',
-                    reason: '用户通过智能助手确认删除好友',
+                    reason: '用户通过世界动态助手确认删除好友',
                 });
                 saveStore(socialStore, { immediate: true });
                 refreshInjection();
@@ -8921,7 +8922,7 @@ async function executeLingqiButlerActions(actions = [], { confirmed = false } = 
                 const result = cancelActiveBackgroundTasks({ preserveLingqi: true });
                 results.push(
                     result.cancelled
-                        ? `其他后台任务已经停了：${result.labels.filter(label => label !== '智能助手').join('、') || '没有别的任务'}。`
+                        ? `其他后台任务已经停了：${result.labels.filter(label => label !== '世界动态助手').join('、') || '没有别的任务'}。`
                         : '当前没有其他后台任务运行。',
                 );
                 continue;
@@ -8972,14 +8973,14 @@ async function executeLingqiButlerActions(actions = [], { confirmed = false } = 
                         skipConfirmation: true,
                     }).catch(error => {
                         if (!isAbortError(error)) {
-                            console.warn('[世界背面] 智能助手代办记忆整理失败', error);
+                            console.warn('[世界动态] 世界动态助手代办记忆整理失败', error);
                             toast(`记忆整理没弄成：${describeError(error)}`, 'error');
                         }
                     });
                 };
 
-                // 如果这条动作来自智能助手模型回复，先让智能助手自己的请求正常收尾，
-                // 再启动记忆任务，避免智能助手 finally 把记忆任务的 busy 状态误清掉。
+                // 如果这条动作来自世界动态助手模型回复，先让世界动态助手自己的请求正常收尾，
+                // 再启动记忆任务，避免世界动态助手 finally 把记忆任务的 busy 状态误清掉。
                 if (runtime.activeLingqi && !runtime.activeLingqi.controller?.signal?.aborted) {
                     window.setTimeout(startMemoryMaintenance, 0);
                 } else {
@@ -9005,7 +9006,7 @@ async function confirmLingqiPendingAction() {
         throw new Error('该操作已不属于当前聊天上下文。');
     }
     runtime.pendingLingqiAction = null;
-    runtime.lingqiStatus = { phase: 'running', message: '智能助手正在执行操作……', error: '' };
+    runtime.lingqiStatus = { phase: 'running', message: '世界动态助手正在执行操作……', error: '' };
     runtime.ui?.render();
     const results = await executeLingqiButlerActions([pending.action], { confirmed: true });
     if (
@@ -9028,7 +9029,7 @@ async function confirmLingqiPendingAction() {
         message: isChatDelete ? (results[0] || '聊天记录已处理。') : '操作已完成。',
         error: '',
     };
-    if (isChatDelete) toast(results[0] || '智能助手聊天记录已处理。', chatDeleteFailed ? 'error' : 'success');
+    if (isChatDelete) toast(results[0] || '世界动态助手聊天记录已处理。', chatDeleteFailed ? 'error' : 'success');
     runtime.ui?.render();
     return results;
 }
@@ -9120,7 +9121,7 @@ function lingqiLocalWorldDiagnosis() {
         return '原因找到了：世界推演总开关现在是关闭的。自动推演和手动推演都不会正常跑。';
     }
     if (!connection.configured) {
-        return '原因找到了：当前没有可用的后台模型连接。先把世界背面的 API / 酒馆连接配好。';
+        return '原因找到了：当前没有可用的后台模型连接。先把世界动态的 API / 酒馆连接配好。';
     }
     if (sync.phase === 'running') {
         return `没有卡住，世界推演正在跑。${sync.message ? `\n现在：${String(sync.message).slice(0, 220)}` : ''}`;
@@ -9168,7 +9169,7 @@ function resolveLingqiLocalQuery(request, { state, settings, sync, clock }) {
     }
     if (request.type === 'status_overview') {
         const narrative = latestNarrativeSyncSnapshot();
-        const activeTasks = (sync.activeBackgroundTasks || []).filter(label => label !== '智能助手');
+        const activeTasks = (sync.activeBackgroundTasks || []).filter(label => label !== '世界动态助手');
         const disabledPeople = (state.people || []).filter(person => !person.isUser && person.simulationEnabled === false).length;
         const lines = [
             `世界时间：${state.clock?.anchored ? clock.stamp : '还没钉稳'}`,
@@ -9286,13 +9287,13 @@ function resolveLingqiLocalQuery(request, { state, settings, sync, clock }) {
         const lingqi = normalizeLingqiState(getStore().lingqi || emptyLingqiState());
         const matches = findLingqiChatMatches(lingqi.messages, request.query, 8);
         if (!matches.length) {
-            return { reply: `我翻了翻，没找到提到“${request.query}”的智能助手聊天。换个更接近原话的词？`, mascotState: 'confused', actions: [] };
+            return { reply: `没有找到提到“${request.query}”的世界动态助手聊天。可以尝试使用更接近原文的关键词。`, mascotState: 'confused', actions: [] };
         }
         const lines = matches.map(item => {
             const date = item.at ? new Date(item.at) : null;
             const stamp = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : `第 ${item.index + 1} 条`;
             const preview = item.text.replace(/\s+/gu, ' ').slice(0, 120);
-            return `· ${stamp}｜${item.role === 'user' ? '你' : '智能助手'}：${preview}${item.text.length > 120 ? '…' : ''}`;
+            return `· ${stamp}｜${item.role === 'user' ? '你' : '世界动态助手'}：${preview}${item.text.length > 120 ? '…' : ''}`;
         });
         return { reply: `找到 ${matches.length} 处提到“${request.query}”：\n${lines.join('\n')}`, mascotState: 'watch', actions: [] };
     }
@@ -9309,7 +9310,7 @@ function resolveLingqiLocalButlerRequest(userText = '') {
 
     if (/(?:通讯|朋友圈|好友申请|好友关系|群聊|发消息|私聊)/iu.test(raw)) {
         return {
-            reply: '当前版本已移除“通讯”社交系统。人物、世界推演、舆情和智能助手的其他能力不受影响。',
+            reply: '当前版本已移除“通讯”社交系统。人物、世界推演、舆情和世界动态助手的其他能力不受影响。',
             mascotState: 'watch',
             actions: [],
         };
@@ -9346,7 +9347,7 @@ function resolveLingqiLocalButlerRequest(userText = '') {
         };
     }
     if (/(?:现在|当前).{0,8}(?:什么|哪些|有啥).{0,5}(?:后台任务|任务).{0,4}(?:跑|运行)|后台任务.{0,5}(?:有哪些|有啥|在跑)/iu.test(raw)) {
-        const tasks = (sync.activeBackgroundTasks || []).filter(label => label !== '智能助手');
+        const tasks = (sync.activeBackgroundTasks || []).filter(label => label !== '世界动态助手');
         return {
             reply: tasks.length
                 ? `现在还在动的有：${tasks.join('、')}。`
@@ -9398,7 +9399,7 @@ function resolveLingqiLocalButlerRequest(userText = '') {
     }
 
     const priorityPersonMatch = raw.match(
-        /^(?:帮我|请|让智能助手|智能助手|让玲七|玲七)?\s*(?:让|把)?\s*([^，。！？!]{1,40}?)\s*(?:下一轮优先|排到下一轮前面|下一轮先看)\s*[吧。！!]*$/iu,
+        /^(?:帮我|请|让世界动态助手|世界动态助手|让玲七|玲七)?\s*(?:让|把)?\s*([^，。！？!]{1,40}?)\s*(?:下一轮优先|排到下一轮前面|下一轮先看)\s*[吧。！!]*$/iu,
     );
     if (priorityPersonMatch) {
         return {
@@ -9409,7 +9410,7 @@ function resolveLingqiLocalButlerRequest(userText = '') {
     }
 
     const catchUpPersonMatch = raw.match(
-        /^(?:帮我|请|让智能助手|智能助手|让玲七|玲七)?\s*(?:补一下|补下|看看)\s*([^，。！？!]{1,40}?)(?:的)?\s*(?:近况|最近怎么样)\s*[吧。！!]*$/iu,
+        /^(?:帮我|请|让世界动态助手|世界动态助手|让玲七|玲七)?\s*(?:补一下|补下|看看)\s*([^，。！？!]{1,40}?)(?:的)?\s*(?:近况|最近怎么样)\s*[吧。！!]*$/iu,
     );
     if (catchUpPersonMatch) {
         return {
@@ -9455,7 +9456,7 @@ function resolveLingqiLocalButlerRequest(userText = '') {
         {
             re: /^(?:帮我|请|直接)?\s*(?:停止|停掉|停下)\s*(?:全部|所有)?\s*(?:后台任务|后台)\s*[吧。！!]*$/iu,
             action: { type: 'cancel_background_tasks' },
-            reply: '都先停一下。智能助手自己留着把这句话说完。',
+            reply: '已停止其他后台任务；当前助手请求继续完成。',
             mascotState: 'hold',
         },
         {
@@ -9485,9 +9486,9 @@ function resolveLingqiLocalButlerRequest(userText = '') {
 
 async function sendLingqiMessage(text) {
     const userText = String(text || '').trim().slice(0, 3000);
-    if (!userText) throw new Error('请输入要发送给智能助手的内容。');
+    if (!userText) throw new Error('请输入要发送给世界动态助手的内容。');
     if (runtime.activeLingqi && !runtime.activeLingqi.controller?.signal?.aborted) {
-        throw new Error('智能助手正在处理上一条请求。');
+        throw new Error('世界动态助手正在处理上一条请求。');
     }
 
     const localRequest = resolveLingqiLocalButlerRequest(userText);
@@ -9516,7 +9517,7 @@ async function sendLingqiMessage(text) {
         refreshInjection();
         runtime.lingqiStatus = {
             phase: 'success',
-            message: runtime.pendingLingqiAction ? '已定位操作范围，请确认。' : localRequest.actions?.length ? '操作已完成。' : '智能助手已处理该请求。',
+            message: runtime.pendingLingqiAction ? '已定位操作范围，请确认。' : localRequest.actions?.length ? '操作已完成。' : '世界动态助手已处理该请求。',
             error: '',
         };
         runtime.ui?.render();
@@ -9637,10 +9638,10 @@ async function sendLingqiMessage(text) {
                         : triage.route === 'mama'
                             ? '当前无法定位问题，已生成诊断信息。'
                             : runtime.pendingLingqiAction
-                                ? '智能助手已生成待确认操作。'
+                                ? '世界动态助手已生成待确认操作。'
                                 : actionResults.length
-                                    ? '智能助手已完成可直接执行的操作。'
-                                    : '智能助手已生成回复。',
+                                    ? '世界动态助手已完成可直接执行的操作。'
+                                    : '世界动态助手已生成回复。',
                 error: '',
             };
             runtime.ui?.render();
@@ -9652,7 +9653,7 @@ async function sendLingqiMessage(text) {
             if (isAbortError(error) || controller.signal.aborted) return null;
             runtime.lingqiStatus = {
                 phase: 'error',
-                message: '智能助手刚刚没接上话……',
+                message: '世界动态助手请求处理失败，请稍后重试。',
                 error: describeError(error),
             };
             runtime.ui?.render();
@@ -9889,6 +9890,50 @@ async function resetCurrentChatData() {
         removedSnapshots,
         preservedChatMessages: true,
         preservedApiSettings: true,
+    };
+}
+
+
+async function purgeWorldDynamicData() {
+    const context = getContext();
+    if (!context) throw new Error('无法取得 SillyTavern 上下文');
+
+    resetRuntimeMaintenanceState({ clearRetryState: true });
+    const removedSnapshots = clearMessageBranchSnapshots(context);
+    let removedChatState = false;
+    let removedGlobalSettings = false;
+
+    if (context.chatMetadata && Object.prototype.hasOwnProperty.call(context.chatMetadata, STATE_KEY)) {
+        delete context.chatMetadata[STATE_KEY];
+        removedChatState = true;
+    }
+    runtime.transientStore = null;
+
+    if (context.extensionSettings && Object.prototype.hasOwnProperty.call(context.extensionSettings, MODULE_ID)) {
+        delete context.extensionSettings[MODULE_ID];
+        removedGlobalSettings = true;
+    }
+
+    if (typeof context.saveMetadata === 'function') {
+        await context.saveMetadata();
+    } else {
+        context.saveMetadataDebounced?.();
+    }
+    await context.saveChat?.();
+    context.saveSettingsDebounced?.();
+
+    // Do not render or refresh injection after deletion: those code paths would recreate defaults.
+    // Stop this extension instance so an uninstall can proceed without new data being written.
+    window.setTimeout(() => {
+        try { destroyWorldBackstage(); } catch (error) { console.warn('[世界动态] 清理后停用失败', error); }
+    }, 350);
+
+    return {
+        purged: true,
+        removedSnapshots,
+        removedChatState,
+        removedGlobalSettings,
+        preservedChatMessages: true,
     };
 }
 
@@ -10384,6 +10429,10 @@ async function handleUiAction(action, payload = {}) {
 
     if (action === 'reset-current-chat-data') {
         return await resetCurrentChatData();
+    }
+
+    if (action === 'purge-plugin-data') {
+        return await purgeWorldDynamicData();
     }
 
     if (action === 'check-correct-world-state') {
@@ -11090,7 +11139,7 @@ async function handleUiAction(action, payload = {}) {
             day: payload.day,
             hour: payload.hour,
             minute: payload.minute,
-            reason: '在世界背面校准',
+            reason: '在世界动态校准',
         });
         commitManualState(next, '主世界时间已经校准。');
         return;
@@ -11098,7 +11147,7 @@ async function handleUiAction(action, payload = {}) {
 
     if (action === 'advance-clock') {
         const minutes = Number(payload.minutes) || 0;
-        const next = advanceWorldClock(getState(), minutes, '在世界背面手动推进');
+        const next = advanceWorldClock(getState(), minutes, '在世界动态手动推进');
         commitManualState(next, `主世界时间已推进 ${minutes} 分钟。`);
         if (minutes > 0 && getSettings().worldAutoEnabled && getSettings().worldSimulationEnabled) {
             window.setTimeout(() => {
@@ -11330,37 +11379,37 @@ async function handleUiAction(action, payload = {}) {
 }
 
 function installSettingsEntry() {
-    if (hostDocument.getElementById('world-backstage-settings-entry')) return;
+    if (hostDocument.getElementById('world-dynamic-settings-entry')) return;
     const host = hostDocument.querySelector('#extensions_settings2, #extensions_settings');
     if (!host) return;
 
     const entry = hostDocument.createElement('div');
-    entry.id = 'world-backstage-settings-entry';
-    entry.className = 'world-backstage-settings-entry';
+    entry.id = 'world-dynamic-settings-entry';
+    entry.className = 'world-dynamic-settings-entry';
     entry.innerHTML = `
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>世界背面</b>
+                <b>世界动态</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
                 <label class="checkbox_label">
-                    <input id="world-backstage-enabled" type="checkbox">
-                    <span>启用世界背面</span>
+                    <input id="world-dynamic-enabled" type="checkbox">
+                    <span>启用世界动态</span>
                 </label>
                 <p class="notes">镜头之外的时间、人物与事件可持续进行后台推演。</p>
-                <button id="world-backstage-open" class="menu_button" type="button">
-                    打开世界背面
+                <button id="world-dynamic-open" class="menu_button" type="button">
+                    打开世界动态
                 </button>
             </div>
         </div>
     `;
     host.appendChild(entry);
 
-    entry.querySelector('#world-backstage-enabled')?.addEventListener('change', event => {
+    entry.querySelector('#world-dynamic-enabled')?.addEventListener('change', event => {
         void handleUiAction('update-settings', { enabled: event.target.checked });
     });
-    entry.querySelector('#world-backstage-open')?.addEventListener('click', () => {
+    entry.querySelector('#world-dynamic-open')?.addEventListener('click', () => {
         const settings = getSettings();
         if (!settings.enabled) {
             void handleUiAction('update-settings', { enabled: true });
@@ -11372,7 +11421,7 @@ function installSettingsEntry() {
 
 function syncSettingsEntry() {
     const settings = getSettings();
-    const checkbox = hostDocument.getElementById('world-backstage-enabled');
+    const checkbox = hostDocument.getElementById('world-dynamic-enabled');
     if (checkbox) checkbox.checked = settings.enabled;
 }
 
@@ -11411,8 +11460,8 @@ function registerEvents() {
 function registerDebugCheck() {
     const context = getContext();
     context?.registerDebugFunction?.(
-        'world_backstage_state_check',
-        '检查世界背面状态',
+        'world_dynamic_state_check',
+        '检查世界动态状态',
         '检查当前世界时钟、活动事件与分支快照是否可读取',
         () => {
             const state = getState();
@@ -11424,7 +11473,7 @@ function registerDebugCheck() {
                 pendingSync: state.pendingSync,
                 latestSnapshot: Boolean(findLatestResultSnapshot()),
             };
-            console.info('[世界背面] 状态检查', result);
+            console.info('[世界动态] 状态检查', result);
             toast('状态检查完成，详细结果已写入浏览器控制台。', 'success');
             return result;
         },
@@ -11432,9 +11481,9 @@ function registerDebugCheck() {
 }
 
 export function initializeWorldBackstage() {
-    if (runtime.initialized || globalThis.__worldBackstageLoaded) return;
+    if (runtime.initialized || globalThis.__worldDynamicLoaded) return;
     runtime.initialized = true;
-    globalThis.__worldBackstageLoaded = true;
+    globalThis.__worldDynamicLoaded = true;
     runtime.activeChatToken = currentChatToken();
 
     getSettings();
@@ -11451,7 +11500,7 @@ export function initializeWorldBackstage() {
     // Additive bridge for the companion phone. The world engine and its UI stay
     // identical to the GitHub baseline; this surface only exposes existing state
     // and actions so the phone does not need a second copy of the world.
-    hostWindow.worldBackstageHost = {
+    hostWindow.worldDynamicHost = {
         version: PLUGIN_VERSION,
         integratedLauncher: true,
         open: options => runtime.ui?.open?.(options),
@@ -11489,13 +11538,13 @@ export function initializeWorldBackstage() {
         dismissPublicOpinionItem: (kind, itemId) => handleUiAction('dismiss-public-opinion-item', { kind, itemId }),
         updatePublicOpinionSettings: patch => handleUiAction('update-settings', patch && typeof patch === 'object' ? patch : {}),
     };
-    hostWindow.dispatchEvent(new hostWindow.CustomEvent('world-backstage:ready', { detail: { version: PLUGIN_VERSION } }));
+    hostWindow.dispatchEvent(new hostWindow.CustomEvent('world-dynamic:ready', { detail: { version: PLUGIN_VERSION } }));
 
     installSettingsEntry();
     registerEvents();
     registerDebugCheck();
     restoreLatestBranch();
-    console.info('[世界背面] 世界状态引擎已加载');
+    console.info('[世界动态] 世界状态引擎已加载');
 }
 
 
@@ -11514,8 +11563,9 @@ export function destroyWorldBackstage() {
     try { runtime.ui?.destroy?.(); } catch {}
     runtime.ui = null;
     runtime.initialized = false;
-    try { delete globalThis.__worldBackstageLoaded; } catch { globalThis.__worldBackstageLoaded = false; }
-    try { hostDocument.getElementById('world-backstage-settings-entry')?.remove?.(); } catch {}
-    try { delete hostWindow.worldBackstageHost; } catch {}
+    try { delete globalThis.__worldDynamicLoaded; } catch { globalThis.__worldDynamicLoaded = false; }
+    try { hostDocument.getElementById('world-dynamic-settings-entry')?.remove?.(); } catch {}
+    try { delete hostWindow.worldDynamicHost; } catch {}
+    try { destroyMagicWandEntry(); } catch {}
 }
 

@@ -7,9 +7,9 @@ import {
 
 const WB_STATE_RECONCILE_ORDER = Object.freeze([3, 1, 4, 2]);
 
-export const MODULE_ID = 'world_backstage';
-export const STATE_KEY = 'world_backstage_v1';
-export const SNAPSHOT_KEY = 'world_backstage';
+export const MODULE_ID = 'world_dynamic';
+export const STATE_KEY = 'world_dynamic_v1';
+export const SNAPSHOT_KEY = 'world_dynamic';
 export const SCHEMA_VERSION = 25;
 export const MAX_CALENDAR_YEAR = 999999;
 export const MINUTES_PER_DAY = 24 * 60;
@@ -1326,7 +1326,7 @@ export function buildPublicImpactPrompt(state, {
     }));
 
     return [
-        '你是“世界背面”的公共事件影响传播引擎。你的任务不是写新闻，而是判断已经进入公共传播的世界事件，会怎样真实改变这个世界。',
+        '你是“世界动态”的公共事件影响传播引擎。你的任务不是写新闻，而是判断已经进入公共传播的世界事件，会怎样真实改变这个世界。',
         '',
         '核心原则：事件可以完全不是为了主角发生，但主角和角色生活在这个世界里，所以只要职业、组织、地点、资源、关系、政策、市场或社会环境被波及，后果必须进入后台世界状态。',
         compact.world.background
@@ -4611,8 +4611,8 @@ export function buildInjectionPackage(state, settings = {}, recentText = '', { c
         open: '可以在场景中加入一条简短、自然的可感知变化，但不要后台播报。',
     }[settings.sceneTiming] || '只在自然时机显露，不要后台播报。';
 
-    const authorityLines = ['<world_backstage_state>'];
-    const supportLines = ['<world_backstage_support>'];
+    const authorityLines = ['<world_dynamic_state>'];
+    const supportLines = ['<world_dynamic_support>'];
 
     if (injectBackground) {
         if (state.world?.background) {
@@ -4636,7 +4636,7 @@ export function buildInjectionPackage(state, settings = {}, recentText = '', { c
         } else {
             authorityLines.push(
                 '当前人物权威状态（必须保持连续性；不等于主角知道全部后台信息）：',
-                '若正文没有明确写出新的移动、离场、返回或状态变化，不得把人物无理由放到与这里冲突的位置；若正文明确发生了新变化，则按新变化继续，并由世界背面回写。',
+                '若正文没有明确写出新的移动、离场、返回或状态变化，不得把人物无理由放到与这里冲突的位置；若正文明确发生了新变化，则按新变化继续，并由世界动态回写。',
             );
         }
         for (const person of people) {
@@ -4741,13 +4741,13 @@ export function buildInjectionPackage(state, settings = {}, recentText = '', { c
     }
 
     if (authorityLines.length > 1) {
-        authorityLines.push('禁止提及“世界背面”、状态表、注入块或幕后独白。');
-        authorityLines.push('</world_backstage_state>');
+        authorityLines.push('禁止提及“世界动态”、状态表、注入块或幕后独白。');
+        authorityLines.push('</world_dynamic_state>');
     }
     const supportHasContent = supportLines.length > 1;
     if (supportHasContent) {
         supportLines.push('辅助信息只用于自然承接和长期连续性；不得覆盖上面的权威世界状态。');
-        supportLines.push('</world_backstage_support>');
+        supportLines.push('</world_dynamic_support>');
     }
 
     const compactLayer = (sourceLines, maximumCharacters, closingTag) => {
@@ -4775,9 +4775,9 @@ export function buildInjectionPackage(state, settings = {}, recentText = '', { c
         };
     };
 
-    const authority = compactLayer(authorityLines, 4600, '</world_backstage_state>');
+    const authority = compactLayer(authorityLines, 4600, '</world_dynamic_state>');
     const support = supportHasContent
-        ? compactLayer(supportLines, 1100, '</world_backstage_support>')
+        ? compactLayer(supportLines, 1100, '</world_dynamic_support>')
         : { text: '', omitted: 0 };
 
     return {
@@ -4851,7 +4851,7 @@ export function buildMemoryRollupPrompt(state, plan, { compact = false } = {}) {
         tags: summary.tags,
     }));
     return [
-        '你是“世界背面”的长期记忆压缩员。这里只做档案压缩，不续写剧情、不推演未来、不修改任何事实。',
+        '你是“世界动态”的长期记忆压缩员。这里只做档案压缩，不续写剧情、不推演未来、不修改任何事实。',
         `请把下面 ${sources.length} 条 ${levelNames[sourceLevel]} 压成 1 条 ${levelNames[targetLevel]}。`,
         '要求：',
         '1. 只能使用给出的下层摘要；禁止补写不存在的情节。',
@@ -5177,7 +5177,7 @@ export function buildWorldBootstrapPrompt(state, {
         : '输出要克制：只恢复对当前世界仍有价值的内容。人物最多16名、未完暗流最多10条、世界事实最多16条、世界脉搏最多8项；不要把历史流水账重新复制一遍。';
 
     return [
-        '你是“世界背面”的历史回溯引擎。目标是让插件在长聊天中途启用时，能够接上此前已经真实发生的世界，而不是重新创作一份过去。',
+        '你是“世界动态”的历史回溯引擎。目标是让插件在长聊天中途启用时，能够接上此前已经真实发生的世界，而不是重新创作一份过去。',
         '',
         '总原则：恢复证据支持的世界，不补写隐藏历史，不推演未来。',
         compactState.world.background
@@ -5538,7 +5538,7 @@ export function buildWorldPulsePrompt(state, {
         ].join('\n');
 
     return [
-        '你是“世界背面”的世界脉搏引擎。本次没有新的小说正文；主世界时钟已经由用户或系统推进或正在进行一次明确的公共世界刷新。你只根据当前权威世界状态，结算到期变化并让镜头外世界按因果继续。',
+        '你是“世界动态”的世界脉搏引擎。本次没有新的小说正文；主世界时钟已经由用户或系统推进或正在进行一次明确的公共世界刷新。你只根据当前权威世界状态，结算到期变化并让镜头外世界按因果继续。',
         compact.world.background
             ? `世界背景设定（用户维护、不可由推演改写）：${compact.world.background}`
             : '世界背景设定：未额外填写。',
@@ -5644,7 +5644,7 @@ export function buildHistoryIndexPrompt(state, {
         }));
 
     return [
-        '你是“世界背面”的历史档案员。你只整理已经发生的聊天记录，不续写、不推演未来、不修改世界时间。',
+        '你是“世界动态”的历史档案员。你只整理已经发生的聊天记录，不续写、不推演未来、不修改世界时间。',
         '',
         '任务：',
         '1. 为本批每一条 assistant 正文分别写一条 L0 单轮摘要，放进 turn_summaries。每条只总结对应消息，不把下一轮或别的消息混进来；保留关系变化、承诺、冲突、重要物品与未完成的问题。',
@@ -5911,7 +5911,7 @@ export function buildPersonObservationPrompt(state, person, {
     const observedBackgroundProfile = modelText(person?.backgroundProfile, LIMITS.backgroundProfile);
 
     return [
-        '你是“世界背面”的人物即时观测器。',
+        '你是“世界动态”的人物即时观测器。',
         `本次唯一观测主体是“${modelText(person?.name, 80)}”。不要以第一人称小说的方式描写“正在做什么”，而要直接呈现该角色此刻脑中真实经过的念头、注意力、判断、犹豫、联想、情绪反应与即时意识活动。`,
         '你不是在介绍、分析或“扮演一个像该角色的人”；你要直接停留在该角色自己的意识内部。输出不是小说、日记、心理描写作文、人物小传或状态总结。',
         '这是幕后即时观测，不是主聊天正文，也不是新的世界推演。',
@@ -6525,7 +6525,7 @@ export function buildStateCorrectionPrompt(state, {
         }));
 
     return [
-        '你是“世界背面”的事实一致性校对员。你的任务只有纠错，不续写剧情、不创造新发展。',
+        '你是“世界动态”的事实一致性校对员。你的任务只有纠错，不续写剧情、不创造新发展。',
         '权威顺序：用户/作者维护设定 > 正文明示事实 > 已结算事件结果 > AI后台推断。',
         '绝对禁止：',
         '1. 不能改写、删除或否认已经真实出现在正文里的历史。',
@@ -6924,22 +6924,22 @@ const activeDirectorNotes = asArray(directorNotes)
         }));
     const directorRule = activeDirectorNotes.length
         ? [
-            '智能助手剧情引导（用户明确确认的创作愿望，不是世界事实）：',
+            '世界动态助手剧情引导（用户明确确认的创作愿望，不是世界事实）：',
             ...activeDirectorNotes.map(note => `- [${note.id}] 强度=${note.strength}；范围=${note.scope}；${note.directive}`),
             '实现方式必须服从当前权威世界状态、人物稳定设定、知识边界、时间连续性和玩家自主意志。natural=有机会就顺势靠近；priority=本轮明显优先尝试；force=在不违反硬事实与玩家意志的前提下尽量兑现。条件不足时可以先铺设自然条件，绝不能为了兑现愿望而瞬移、改写既有事实、让人物性格突变或替玩家决定行动。',
             activeDirectorNotes.some(note => note.consumed)
-                ? '这些纸条已经在本批正文生成前提供给前台模型；此处以“核对结果”为主。不要为了补做纸条而额外制造镜头外事件，只同步 new 正文已经发生的变化，并按正常世界因果维护后台。'
-                : '如果纸条尚未提供给前台正文，只能在正常世界因果本来就成立时顺势支持，不能为了完成纸条凭空制造事件。',
-            '对每张本轮提供的纸条，在 director_note_updates 中判断本批 new 正文实际结果：completed=已经真正兑现；continue=尚未完成但仍适合继续寻找机会；blocked=本轮客观条件不适合。memo 用一句简短说明，不要假装未发生的内容已经发生。',
+                ? '这些剧情引导已经在本批正文生成前提供给前台模型；此处以“核对结果”为主。不要为了补做剧情引导而额外制造镜头外事件，只同步 new 正文已经发生的变化，并按正常世界因果维护后台。'
+                : '如果剧情引导尚未提供给前台正文，只能在正常世界因果本来就成立时顺势支持，不能为了完成剧情引导凭空制造事件。',
+            '对每条本轮提供的剧情引导，在 director_note_updates 中判断本批 new 正文实际结果：completed=已经真正兑现；continue=尚未完成但仍适合继续寻找机会；blocked=本轮客观条件不适合。memo 用一句简短说明，不要假装未发生的内容已经发生。',
         ].join('\n')
-        : '本轮没有智能助手剧情引导。';
+        : '本轮没有世界动态助手剧情引导。';
     const npcBudget = asInteger(backgroundNpcBudget, 4, 0);
     const newAssistantRule = newAssistantIndexSet.size === 1
         ? '11. 较早轮次只用于理解因果，不得重复计算；本次只推演最后一个 assistant_turn（new="true"）。'
         : `11. 只处理标记 new="true" 的最后 ${newAssistantIndexSet.size} 个 assistant_turn，并按消息顺序合并变化；new="false" 的轮次只用于理解因果，不得重复计算。`;
 
     return [
-        '你是“世界背面”的世界状态引擎。你维护一个持续运转的世界，不是正文纪要器。正文只是当前镜头；镜头外已经结算的结果同样属于真实世界。你不续写小说正文，只处理标记为 new="true" 的正文变化，并继续维护必要的镜头外因果。',
+        '你是“世界动态”的世界状态引擎。你维护一个持续运转的世界，不是正文纪要器。正文只是当前镜头；镜头外已经结算的结果同样属于真实世界。你不续写小说正文，只处理标记为 new="true" 的正文变化，并继续维护必要的镜头外因果。',
         compact.world.background
             ? `用户维护的“世界背景设定”是这个世界的基础地基，不是动态状态，也不是可改写建议：${compact.world.background}`
             : '当前没有额外填写“世界背景设定”，只按已有世界状态与正文证据运行。',

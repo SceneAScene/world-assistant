@@ -1,4 +1,4 @@
-const ENTRY_ID = 'world-backstage-wand-entry';
+const ENTRY_ID = 'world-dynamic-wand-entry';
 const POLL_MS = 1800;
 let timer = null;
 
@@ -8,13 +8,13 @@ function getMenu() {
 
 function openWorldBackstage() {
     try {
-        globalThis.worldBackstageHost?.open?.();
-        if (!globalThis.worldBackstageHost?.open) {
-            globalThis.toastr?.warning?.('世界背面仍在初始化，请稍后再试。');
+        globalThis.worldDynamicHost?.open?.();
+        if (!globalThis.worldDynamicHost?.open) {
+            globalThis.toastr?.warning?.('世界动态仍在初始化，请稍后再试。');
         }
     } catch (error) {
-        console.error('[世界背面] 打开失败', error);
-        globalThis.toastr?.error?.(`世界背面打开失败：${error?.message || error}`);
+        console.error('[世界动态] 打开失败', error);
+        globalThis.toastr?.error?.(`世界动态打开失败：${error?.message || error}`);
     }
 }
 
@@ -29,8 +29,8 @@ function installEntry() {
         entry.className = 'list-group-item flex-container flexGap5 interactable';
         entry.setAttribute('role', 'button');
         entry.setAttribute('tabindex', '0');
-        entry.setAttribute('title', '打开世界背面');
-        entry.innerHTML = '<i class="fa-solid fa-globe" aria-hidden="true"></i><span>世界背面</span>';
+        entry.setAttribute('title', '打开世界动态');
+        entry.innerHTML = '<i class="fa-solid fa-globe" aria-hidden="true"></i><span>世界动态</span>';
         entry.addEventListener('click', event => {
             event.preventDefault();
             openWorldBackstage();
@@ -53,6 +53,14 @@ function installEntry() {
 function start() {
     installEntry();
     if (timer === null) timer = globalThis.setInterval(installEntry, POLL_MS);
+}
+
+export function destroyMagicWandEntry() {
+    if (timer !== null) {
+        globalThis.clearInterval(timer);
+        timer = null;
+    }
+    document.getElementById(ENTRY_ID)?.remove?.();
 }
 
 if (document.readyState === 'loading') {
