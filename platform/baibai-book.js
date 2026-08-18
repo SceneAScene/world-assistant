@@ -4,11 +4,23 @@ function clean(value, max = 12000) {
     return String(value ?? '').replace(/\r/g, '').trim().slice(0, max);
 }
 
-export function getBaiBaiBookStatus() {
+function normalizePurpose(purpose) {
+    return String(purpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
+}
+
+function purposeEnabled(settings, purpose) {
+    return purpose === 'observation'
+        ? settings.observationUseBaiBaiBook === true
+        : settings.simulationUseBaiBaiBook === true;
+}
+
+export function getBaiBaiBookStatus(purpose = 'simulation') {
     const settings = getSceneWorldSettings();
+    const mode = normalizePurpose(purpose);
     const api = globalThis.STBaiBaiBook;
     return {
-        enabled: settings.useBaiBaiBook === true,
+        purpose: mode,
+        enabled: purposeEnabled(settings, mode),
         available: !!api,
         apiVersion: api?.apiVersion ?? null,
         pluginVersion: api?.pluginVersion ?? null,
@@ -16,15 +28,17 @@ export function getBaiBaiBookStatus() {
     };
 }
 
-export function buildBaiBaiBookHistoryContext() {
+export function buildBaiBaiBookHistoryContext({ purpose = 'simulation' } = {}) {
     const settings = getSceneWorldSettings();
-    if (!settings.useBaiBaiBook) {
-        return { text: '', stats: { enabled: false, available: !!globalThis.STBaiBaiBook, used: false, reason: 'disabled' } };
+    const mode = normalizePurpose(purpose);
+    const enabled = purposeEnabled(settings, mode);
+    if (!enabled) {
+        return { text: '', stats: { purpose: mode, enabled: false, available: !!globalThis.STBaiBaiBook, used: false, reason: 'disabled' } };
     }
 
     const api = globalThis.STBaiBaiBook;
     if (!api || typeof api.getInjectedHistory !== 'function') {
-        return { text: '', stats: { enabled: true, available: false, used: false, reason: 'api-unavailable' } };
+        return { text: '', stats: { purpose: mode, enabled: true, available: false, used: false, reason: 'api-unavailable' } };
     }
 
     try {
@@ -41,6 +55,7 @@ export function buildBaiBaiBookHistoryContext() {
         return {
             text,
             stats: {
+                purpose: mode,
                 enabled: true,
                 available: true,
                 used: !!text,
@@ -53,10 +68,11 @@ export function buildBaiBaiBookHistoryContext() {
             },
         };
     } catch (error) {
-        console.warn('[SceneWorld] 柏宝书长期历史读取失败，已跳过', error);
+        console.warn(`[SceneWorld] 柏宝书长期历史读取失败（${mode === 'observation' ? '见闻' : '世界推演'}），已跳过`, error);
         return {
             text: '',
             stats: {
+                purpose: mode,
                 enabled: true,
                 available: true,
                 used: false,

@@ -1,4 +1,4 @@
-const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算器。你的任务不是续写小说，也不是导演剧情，而是根据“当前世界快照 + 最近少量世界动态 + 可选长期压缩历史 + 少量已结算 AI 前置正文 + 本轮尚未结算的 AI 正文区间”做一次克制、通用、稀疏的状态结算。
+const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算器。你的任务不是续写小说，也不是导演剧情，而是根据“当前世界快照 + 最近少量世界动态 + 可选长期压缩历史 + 本轮尚未结算的 AI 正文区间”做一次克制、通用、稀疏的状态结算。
 
 这是通用模板，不要先判断角色卡属于恋爱、群像、古风、中世纪、现代、科幻等类别。只根据真实提供的信息工作。
 
@@ -14,7 +14,7 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 - “柏宝书长期历史”如果提供，只用于帮助理解更久以前已发生的剧情；它可能被压缩或存在缺口，不能覆盖本轮正文中的最新事实。
 - “最近世界动态”只保留最近 5 次结算摘要，帮助理解世界最近如何变成当前状态；不要把它们重复当成本轮新变化。
 - “持续性世界事实”数量严格受限，只保留当前仍会约束后续世界一致性的事实。它不是完整历史档案。
-- 本轮待结算正文可能包含多条 AI 回复，必须整体理解，以区间末尾明确成立的状态为当前状态。
+- 本轮待结算正文每次最多 10 条 AI 回复，必须整体理解，以区间末尾明确成立的状态为当前状态。
 
 人物规则：
 - 不替用户角色决定未发生的行动、情绪、目标或认知。
@@ -96,9 +96,8 @@ function transcript(messages) {
 }
 
 export function buildManualSimulationMessages({ state, batch, worldReferenceText = '', longTermHistoryText = '', longTermHistoryNote = '' }) {
-    const preContext = transcript(batch?.preContext);
     const pending = transcript(batch?.pendingMessages);
-    const userPrompt = `世界观参考（只作为设定约束，不代表当前事件已经发生）：\n${worldReferenceText || '（未提供）'}\n\n可选长期压缩历史（柏宝书）：\n${longTermHistoryText || '（未启用或当前无可用长期历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n已结算 AI 前置正文（仅帮助理解承接，不得重复结算）：\n${preContext || '（无）'}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空：\n{
+    const userPrompt = `世界观参考（只作为设定约束，不代表当前事件已经发生）：\n${worldReferenceText || '（未提供）'}\n\n可选长期压缩历史（柏宝书）：\n${longTermHistoryText || '（未启用或当前无可用长期历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空：\n{
   "simulation_digest": "本轮世界净变化的1～3句摘要；没有值得进入最近动态的变化则留空",
   "world_patch": {
     "time": null,

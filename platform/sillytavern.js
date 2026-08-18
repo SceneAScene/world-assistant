@@ -1,19 +1,26 @@
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { generateRaw, saveSettingsDebounced } from '../../../../../script.js';
 export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
-    // 世界观参考：只额外提供当前角色的“角色描述（Description）”。
+    // 世界推演可以额外读取当前角色的“角色描述（Description）”。见闻不读取角色描述。
     includeCharacterDescription: true,
     characterDescriptionMaxChars: 5000,
-    // 世界书采用“当前聊天正在使用的世界书 + 用户逐本勾选”的白名单方式。
-    // 未出现过的世界书默认允许；用户取消勾选后会在这里留下 false 覆盖值。
-    worldBookSelection: Object.freeze({}),
-    worldInfoMaxChars: 16000,
+    // 世界推演与见闻分别维护世界书白名单。这里保存的是“整本世界书是否允许 SceneWorld 读取”，
+    // 与酒馆本轮有没有激活其中条目无关。未出现过的当前世界书默认允许，用户取消后保存 false。
+    simulationWorldBookSelection: Object.freeze({}),
+    observationWorldBookSelection: Object.freeze({}),
+    simulationWorldInfoMaxChars: 16000,
+    observationWorldInfoMaxChars: 16000,
     // Only text inside these complete assistant-message tags is treated as narrative canon.
     // This intentionally excludes status panels, chain-of-thought blocks, action menus and mini-theaters outside the body tag.
     contentTags: Object.freeze(['content']),
     contentFallbackToWholeMessage: false,
-    // 可选读取柏宝书公开只读接口提供的压缩长期历史。默认关闭，避免用户未确认就增加上下文。
-    useBaiBaiBook: false,
+    // 首次在一个旧聊天中启用世界动态时，默认只从当前附近开始：取最近最多 10 条 AI 正文。
+    // 若用户明确选择从某楼层回溯，则从指定楼层起每批最多向后结算 10 条。
+    initialSettlementMode: 'latest',
+    initialStartFloor: 0,
+    // 柏宝书长期历史也分开控制。世界推演和见闻可独立启用。
+    simulationUseBaiBaiBook: false,
+    observationUseBaiBaiBook: false,
     baibaiHistoryMaxChars: 8000,
 });
 
@@ -55,15 +62,28 @@ export function getSceneWorldSettings() {
         ...source,
     };
     const contentTags = normalizeContentTags(merged.contentTags);
-    const rawSelection = merged.worldBookSelection && typeof merged.worldBookSelection === 'object' && !Array.isArray(merged.worldBookSelection)
-        ? merged.worldBookSelection
-        : {};
-    const worldBookSelection = {};
-    for (const [name, enabled] of Object.entries(rawSelection)) {
-        const key = String(name ?? '').trim();
-        if (!key) continue;
-        worldBookSelection[key] = enabled !== false;
-    }
+
+    const normalizeBookSelection = value => {
+        const sourceSelection = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        const result = {};
+        for (const [name, enabled] of Object.entries(sourceSelection)) {
+            const key = String(name ?? '').trim();
+            if (!key) continue;
+            result[key] = enabled !== false;
+        }
+        return result;
+    };
+
+    // alpha.15 以前只有一份 worldBookSelection。升级时同时继承给“世界推演”和“见闻”，
+    // 之后两份选择各自独立保存，互不影响。
+    const legacyWorldBookSelection = normalizeBookSelection(source.worldBookSelection);
+    const simulationWorldBookSelection = 'simulationWorldBookSelection' in source
+        ? normalizeBookSelection(source.simulationWorldBookSelection)
+        : { ...legacyWorldBookSelection };
+    const observationWorldBookSelection = 'observationWorldBookSelection' in source
+        ? normalizeBookSelection(source.observationWorldBookSelection)
+        : { ...legacyWorldBookSelection };
+
     // alpha.11 以前叫 includeCharacterBase；升级后只保留角色描述，不再发送性格/场景字段。
     const includeCharacterDescription = 'includeCharacterDescription' in source
         ? source.includeCharacterDescription !== false
@@ -71,15 +91,41 @@ export function getSceneWorldSettings() {
     const characterDescriptionMaxChars = Number.isFinite(Number(source.characterDescriptionMaxChars))
         ? Math.max(1000, Math.min(10000, Math.trunc(Number(source.characterDescriptionMaxChars))))
         : Math.max(1000, Math.min(10000, Math.trunc(Number(source.characterBaseMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.characterDescriptionMaxChars)));
+    const initialSettlementMode = String(merged.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
+    const initialStartFloor = Number.isFinite(Number(merged.initialStartFloor))
+        ? Math.max(0, Math.trunc(Number(merged.initialStartFloor)))
+        : 0;
+
+    const legacyWorldInfoMaxChars = Number(source.worldInfoMaxChars);
+    const simulationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(
+        Number(merged.simulationWorldInfoMaxChars) || legacyWorldInfoMaxChars || DEFAULT_SCENEWORLD_SETTINGS.simulationWorldInfoMaxChars,
+    )));
+    const observationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(
+        Number(merged.observationWorldInfoMaxChars) || legacyWorldInfoMaxChars || DEFAULT_SCENEWORLD_SETTINGS.observationWorldInfoMaxChars,
+    )));
+
+    // 旧 useBaiBaiBook 过去只实际用于核心世界推演，因此迁移时只继承给世界推演；见闻默认关闭。
+    const simulationUseBaiBaiBook = 'simulationUseBaiBaiBook' in source
+        ? source.simulationUseBaiBaiBook === true
+        : source.useBaiBaiBook === true;
+    const observationUseBaiBaiBook = 'observationUseBaiBaiBook' in source
+        ? source.observationUseBaiBaiBook === true
+        : false;
+
     return {
         ...merged,
         includeCharacterDescription,
         characterDescriptionMaxChars,
-        worldBookSelection,
-        worldInfoMaxChars: Math.max(2000, Math.min(32000, Math.trunc(Number(merged.worldInfoMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.worldInfoMaxChars))),
+        simulationWorldBookSelection,
+        observationWorldBookSelection,
+        simulationWorldInfoMaxChars,
+        observationWorldInfoMaxChars,
         contentTags: contentTags.length ? contentTags : ['content'],
         contentFallbackToWholeMessage: merged.contentFallbackToWholeMessage === true,
-        useBaiBaiBook: merged.useBaiBaiBook === true,
+        initialSettlementMode,
+        initialStartFloor,
+        simulationUseBaiBaiBook,
+        observationUseBaiBaiBook,
         baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
     };
 }
@@ -87,41 +133,77 @@ export function getSceneWorldSettings() {
 export function updateSceneWorldSettings(patch) {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return getSceneWorldSettings();
     const current = getSceneWorldSettings();
-    const next = { ...current, worldBookSelection: { ...current.worldBookSelection } };
-    for (const key of ['includeCharacterDescription', 'contentFallbackToWholeMessage', 'useBaiBaiBook']) {
+    const next = {
+        ...current,
+        simulationWorldBookSelection: { ...current.simulationWorldBookSelection },
+        observationWorldBookSelection: { ...current.observationWorldBookSelection },
+    };
+    for (const key of ['includeCharacterDescription', 'contentFallbackToWholeMessage', 'simulationUseBaiBaiBook', 'observationUseBaiBaiBook']) {
         if (key in patch) next[key] = patch[key] === true;
     }
-    for (const [key, min, max] of [['characterDescriptionMaxChars', 1000, 10000], ['worldInfoMaxChars', 2000, 32000], ['baibaiHistoryMaxChars', 2000, 20000]]) {
+    for (const [key, min, max] of [
+        ['characterDescriptionMaxChars', 1000, 10000],
+        ['simulationWorldInfoMaxChars', 2000, 32000],
+        ['observationWorldInfoMaxChars', 2000, 32000],
+        ['baibaiHistoryMaxChars', 2000, 20000],
+    ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }
-    if ('worldBookSelection' in patch && patch.worldBookSelection && typeof patch.worldBookSelection === 'object' && !Array.isArray(patch.worldBookSelection)) {
-        const normalizedSelection = {};
-        for (const [name, enabled] of Object.entries(patch.worldBookSelection)) {
+    if ('initialSettlementMode' in patch) {
+        next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
+    }
+    if ('initialStartFloor' in patch && Number.isFinite(Number(patch.initialStartFloor))) {
+        next.initialStartFloor = Math.max(0, Math.trunc(Number(patch.initialStartFloor)));
+    }
+
+    const normalizeIncomingSelection = value => {
+        const normalized = {};
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return normalized;
+        for (const [name, enabled] of Object.entries(value)) {
             const key = String(name ?? '').trim();
             if (!key) continue;
-            normalizedSelection[key] = enabled !== false;
+            normalized[key] = enabled !== false;
         }
-        next.worldBookSelection = normalizedSelection;
+        return normalized;
+    };
+    if ('simulationWorldBookSelection' in patch) {
+        next.simulationWorldBookSelection = normalizeIncomingSelection(patch.simulationWorldBookSelection);
+    }
+    if ('observationWorldBookSelection' in patch) {
+        next.observationWorldBookSelection = normalizeIncomingSelection(patch.observationWorldBookSelection);
     }
     if ('worldBookName' in patch) {
         const name = String(patch.worldBookName ?? '').trim();
-        if (name) next.worldBookSelection[name] = patch.worldBookEnabled !== false;
+        const purpose = String(patch.worldBookPurpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
+        if (name) {
+            const key = purpose === 'observation' ? 'observationWorldBookSelection' : 'simulationWorldBookSelection';
+            next[key][name] = patch.worldBookEnabled !== false;
+        }
     }
     if ('contentTags' in patch) {
         const tags = normalizeContentTags(patch.contentTags);
         next.contentTags = tags.length ? tags : ['content'];
     }
-    // 清理旧版四开关，防止后续误以为它们仍参与世界书选择。
+
+    // 清理已经废弃的旧设置，避免后续误以为仍参与逻辑。
     delete next.includeCharacterBase;
     delete next.includeCharacterWorldInfo;
     delete next.includeChatWorldInfo;
     delete next.includeGlobalWorldInfo;
     delete next.characterBaseMaxChars;
+    delete next.worldBookSelection;
+    delete next.worldInfoMaxChars;
+    delete next.useBaiBaiBook;
+
     extension_settings.sceneworld = next;
     saveSettingsDebounced?.();
-    return { ...next, contentTags: [...next.contentTags], worldBookSelection: { ...next.worldBookSelection } };
+    return {
+        ...next,
+        contentTags: [...next.contentTags],
+        simulationWorldBookSelection: { ...next.simulationWorldBookSelection },
+        observationWorldBookSelection: { ...next.observationWorldBookSelection },
+    };
 }
-
 
 export function getContextSafe() {
     try {

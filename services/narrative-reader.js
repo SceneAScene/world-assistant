@@ -9,5 +9,9 @@ export function readPendingNarrativeBatch(sync = {}, options = {}) {
             tags: settings.contentTags,
             fallbackToWholeMessage: settings.contentFallbackToWholeMessage,
         },
+        initialSettlement: {
+            mode: settings.initialSettlementMode,
+            startFloor: settings.initialStartFloor,
+        },
     });
 }

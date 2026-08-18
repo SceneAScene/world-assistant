@@ -2,7 +2,7 @@ import { createEmptySceneWorldState } from '../data/sceneworld-schema.js';
 import { commitSceneWorldState, readSceneWorldState } from '../data/sceneworld-store.js';
 import { buildManualSimulationMessages } from '../engine/sceneworld-prompts.js';
 import { applySimulationPayload, parseSimulationResponse, summarizeSimulationPayload } from '../engine/simulation-result.js';
-import { generateWithCurrentConnection } from '../platform/sillytavern.js';
+import { generateWithCurrentConnection, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 import { readPendingNarrativeBatch } from './narrative-reader.js';
@@ -45,9 +45,10 @@ export async function simulatePendingNarrative(expectedBatch = null) {
     const base = persisted ?? createEmptySceneWorldState();
     const reference = await buildWorldReferenceContext({
         state: base,
-        queryText: [...(batch.preContext || []), ...(batch.pendingMessages || [])].map(item => item?.text || '').join('\n'),
+        queryText: (batch.pendingMessages || []).map(item => item?.text || '').join('\n'),
+        purpose: 'simulation',
     });
-    const baibai = buildBaiBaiBookHistoryContext();
+    const baibai = buildBaiBaiBookHistoryContext({ purpose: 'simulation' });
     const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
         ? '注意：柏宝书报告长期历史存在摘要缺口，只能作为不完整参考。'
         : '';
@@ -64,5 +65,10 @@ export async function simulatePendingNarrative(expectedBatch = null) {
     const source = batchSource(batch);
     const next = applySimulationPayload(base, payload, source);
     const saved = await commitSceneWorldState(next);
+    // 指定楼层只用于启动首次回溯。成功建立锚点后自动恢复“从当前开始”，
+    // 后续仍会沿锚点每批最多 10 条顺序结算，也避免下一个新聊天误用旧起点。
+    if (batch.isInitialBatch && batch.initialMode === 'from_floor') {
+        updateSceneWorldSettings({ initialSettlementMode: 'latest' });
+    }
     return { batch, source, state: saved, raw, changeSummary, worldReference: reference.stats, baibai: baibai.stats };
 }

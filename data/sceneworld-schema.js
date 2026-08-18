@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 13;
+export const SCENEWORLD_SCHEMA_VERSION = 14;
 
 function nowIso() {
     return new Date().toISOString();

@@ -15,7 +15,7 @@ const STYLES = `
 .panel{width:min(920px,96vw);height:min(800px,92dvh);min-height:420px;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:var(--SmartThemeBlurTintColor,rgba(26,28,31,.97));box-shadow:0 24px 80px rgba(0,0,0,.38);color:var(--SmartThemeBodyColor,#e8e8e8)}
 .header{min-height:58px;padding:12px 14px 10px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.10)}
 .title{font-size:18px;font-weight:720;letter-spacing:.04em}.version{font-size:11px;opacity:.55}.spacer{flex:1}
-.close{border:0;background:transparent;color:inherit;width:38px;height:38px;border-radius:10px;cursor:pointer;font-size:22px;line-height:1}.close:hover{background:rgba(255,255,255,.08)}
+.header-icon,.close{border:0;background:transparent;color:inherit;width:38px;height:38px;border-radius:10px;cursor:pointer;line-height:1;display:grid;place-items:center}.header-icon{font-size:19px}.close{font-size:22px}.header-icon:hover,.close:hover{background:rgba(255,255,255,.08)}
 .content{overflow:auto;padding:18px}.stack{max-width:780px;margin:0 auto;display:grid;gap:12px}
 .card{border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.045);border-radius:14px;padding:16px}.card h2{margin:0 0 8px;font-size:16px}.card h3{margin:15px 0 8px;font-size:13px}.card p{margin:7px 0;font-size:13px;line-height:1.65;opacity:.82}
 .status-grid{margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.status{padding:11px 12px;border-radius:10px;background:rgba(0,0,0,.16)}.status b{display:block;font-size:12px;margin-bottom:4px}.status span{font-size:12px;opacity:.72;word-break:break-word}
@@ -57,12 +57,20 @@ function transcriptHtml(messages) {
 
 function pendingPreviewHtml(preview) {
     const batch=preview?.batch;
-    if(!batch)return '<div class="note">尚未读取待结算剧情。</div>';
+    if(!batch)return '<div class="note">尚未读取待结算剧情。每次最多只会读取 10 条 AI 正文。</div>';
     if(batch.anchorChanged)return `<div class="note error">${escapeHtml(batch.anchorReason)}</div>`;
     if(!batch.hasPending)return '<div class="note">当前没有新的 AI 正文需要结算。</div>';
-    const budgetNote=batch.overBudget?`<div class="note warning">待结算正文约 ${batch.characters} 个字符，超过当前单次安全预算 ${batch.limits.maxPendingCharacters}。不会静默截断，也不会额外调用模型压缩，因此暂时禁止推演。</div>`:'';
+    const budgetNote=batch.overBudget?`<div class="note warning">本批只有 ${batch.assistantCount} 条 AI 正文，但合计约 ${batch.characters} 个字符，仍超过单次安全预算 ${batch.limits.maxPendingCharacters}。不会静默截断，因此暂时禁止推演。</div>`:'';
     const previous=Number.isInteger(batch.lastProcessedAssistantMessageId)?`AI #${batch.lastProcessedAssistantMessageId}`:'无（首次结算）';
-    return `<div class="status-grid"><div class="status"><b>上次结算</b><span>${previous}</span></div><div class="status"><b>待结算范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>待结算正文</b><span>${batch.assistantCount} 条 AI 正文${batch.ignoredAssistantCount?` · 忽略 ${batch.ignoredAssistantCount} 条未命中标签的 AI 消息`:''}</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${budgetNote}<details class="preview-details" open><summary>预览本轮标签内正文</summary>${transcriptHtml(batch.pendingMessages)}</details>${batch.preContext?.length?`<details class="preview-details"><summary>已结算 AI 前置正文（同样只取标签内内容）</summary>${transcriptHtml(batch.preContext)}</details>`:''}`;
+    let windowNote='';
+    if(batch.isInitialBatch&&batch.initialMode==='latest'){
+        windowNote=`<div class="note">首次结算采用“从当前开始”：只读取当前聊天最近最多 ${batch.limits.maxPendingAssistantMessages||10} 条 AI 正文。${batch.skippedOlderNarrative?'更早正文已主动跳过，不会一次性回灌。':''}</div>`;
+    }else if(batch.isInitialBatch&&batch.initialMode==='from_floor'){
+        windowNote=`<div class="note">首次结算从指定楼层 #${batch.requestedStartFloor} 开始，本轮最多处理 ${batch.limits.maxPendingAssistantMessages||10} 条 AI 正文。${batch.hasMoreAfterBatch?'后面还有未结算正文，完成本轮后再次读取即可继续下一批。':''}</div>`;
+    }else if(batch.hasMoreAfterBatch){
+        windowNote=`<div class="note">本轮已按上限截成 ${batch.limits.maxPendingAssistantMessages||10} 条。后面还有未结算正文，完成后再次“读取待结算剧情”即可继续下一批。</div>`;
+    }
+    return `<div class="status-grid"><div class="status"><b>上次结算</b><span>${previous}</span></div><div class="status"><b>本批范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>本批正文</b><span>${batch.assistantCount} / ${batch.limits.maxPendingAssistantMessages||10} 条 AI 正文${batch.ignoredAssistantCount?` · 忽略 ${batch.ignoredAssistantCount} 条未命中标签的 AI 消息`:''}</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${windowNote}${budgetNote}<details class="preview-details" open><summary>预览本批标签内正文</summary>${transcriptHtml(batch.pendingMessages)}</details>`;
 }
 
 function actionSuggestionsHtml(state, busy) {
@@ -73,24 +81,57 @@ function actionSuggestionsHtml(state, busy) {
 
 function worldReferenceSettingsHtml(actions, busy) {
     const settings = actions?.getSettings?.() ?? {};
-    const books = actions?.getWorldBooks?.() ?? [];
-    const baibai = actions?.getBaiBaiStatus?.() ?? { enabled: false, available: false };
-    const selectedCount = books.filter(book => book?.enabled !== false).length;
+    const simulationBooks = actions?.getWorldBooks?.('simulation') ?? [];
+    const observationBooks = actions?.getWorldBooks?.('observation') ?? [];
+    const simulationBaiBai = actions?.getBaiBaiStatus?.('simulation') ?? { enabled: false, available: false };
+    const observationBaiBai = actions?.getBaiBaiStatus?.('observation') ?? { enabled: false, available: false };
     const descriptionChecked = settings.includeCharacterDescription !== false;
-    const baibaiChecked = settings.useBaiBaiBook === true;
-    const bookRows = books.length
-        ? books.map(book => `<label class="book-row"><input type="checkbox" data-world-book="${escapeHtml(book.name)}" ${book.enabled!==false?'checked':''} ${busy?'disabled':''}><span><b>${escapeHtml(book.name)}</b><small>${escapeHtml(book.sourceLabel||'当前世界书')}</small></span></label>`).join('')
-        : '<div class="note">当前没有检测到角色、聊天或全局正在使用的世界书。</div>';
-    const baibaiStatus = baibai.available
-        ? `已检测到柏宝书${baibai.pluginVersion?` · ${escapeHtml(baibai.pluginVersion)}`:''}`
-        : '当前未检测到柏宝书公开接口；开启后若接口不可用会自动跳过，不影响世界推演';
-    return `<div class="card"><h2>世界观与长期参考（测试期）</h2><p>这里暂时放在“此刻”页方便验证，正式 UI 会移入设置。世界书选择仍由所有世界动态功能共用；柏宝书只给核心世界推演补充较早的压缩历史，不额外发送给公共动态和街巷漫游。</p><div class="setting-grid"><label class="setting-row"><input type="checkbox" data-world-ref-setting="includeCharacterDescription" ${descriptionChecked?'checked':''} ${busy?'disabled':''}><span><b>传输角色描述</b><small>只读取角色卡里的“角色描述”，不额外发送性格、场景、示例消息等字段。</small></span></label><label class="setting-row"><input type="checkbox" data-world-ref-setting="useBaiBaiBook" ${baibaiChecked?'checked':''} ${busy?'disabled':''}><span><b>使用柏宝书长期历史</b><small>${baibaiStatus}。仅通过柏宝书公开只读接口读取其正常注入口径的压缩历史，默认最多 ${Number(settings.baibaiHistoryMaxChars)||8000} 字符。</small></span></label></div><details class="book-picker"><summary>传输世界书 · 已选 ${selectedCount} / ${books.length} 本</summary><div class="book-list">${bookRows}</div></details><div class="note">蓝灯常驻条目直接作为世界观参考；绿灯条目按原有关键词条件触发；禁用条目不传输。世界动态不会把柏宝书历史写回柏宝书，也不会读取其内部数据结构。</div></div>`;
+
+    const bookPicker = (books, purpose, title) => {
+        const selectedCount = books.filter(book => book?.enabled !== false).length;
+        const rows = books.length
+            ? books.map(book => `<label class="book-row"><input type="checkbox" data-world-book="${escapeHtml(book.name)}" data-world-book-purpose="${purpose}" ${book.enabled!==false?'checked':''} ${busy?'disabled':''}><span><b>${escapeHtml(book.name)}</b><small>${escapeHtml(book.sourceLabel||'当前世界书')}</small></span></label>`).join('')
+            : '<div class="note">当前没有检测到角色、聊天或全局正在使用的世界书。</div>';
+        return `<details class="book-picker"><summary>${title} · 已选 ${selectedCount} / ${books.length} 本</summary><div class="book-list">${rows}</div></details>`;
+    };
+
+    const baibaiText = status => status.available
+        ? `已检测到柏宝书${status.pluginVersion?` · ${escapeHtml(status.pluginVersion)}`:''}`
+        : '当前未检测到柏宝书公开接口；即使勾选，接口不可用时也会自动跳过';
+
+    return `<div class="card"><h2>世界观与长期参考</h2><p>世界推演与见闻分别维护自己的世界书和柏宝书选择，互不影响。</p>
+      <div class="section-title"><h3>世界推演参考</h3></div>
+      <div class="setting-grid">
+        <label class="setting-row"><input type="checkbox" data-world-ref-setting="includeCharacterDescription" ${descriptionChecked?'checked':''} ${busy?'disabled':''}><span><b>传输角色描述</b><small>只给世界推演使用；见闻不读取角色描述。</small></span></label>
+        <label class="setting-row"><input type="checkbox" data-world-ref-setting="simulationUseBaiBaiBook" ${settings.simulationUseBaiBaiBook===true?'checked':''} ${busy?'disabled':''}><span><b>世界推演使用柏宝书长期历史</b><small>${baibaiText(simulationBaiBai)}。默认最多 ${Number(settings.baibaiHistoryMaxChars)||8000} 字符。</small></span></label>
+      </div>
+      ${bookPicker(simulationBooks,'simulation','世界推演使用的世界书')}
+
+      <div class="section-title"><h3>见闻参考</h3></div>
+      <div class="setting-grid">
+        <label class="setting-row"><input type="checkbox" data-world-ref-setting="observationUseBaiBaiBook" ${settings.observationUseBaiBaiBook===true?'checked':''} ${busy?'disabled':''}><span><b>见闻使用柏宝书长期历史</b><small>${baibaiText(observationBaiBai)}。只用于理解较早背景，不会替代当前世界状态。</small></span></label>
+      </div>
+      ${bookPicker(observationBooks,'observation','见闻使用的世界书')}
+      <div class="note">世界书列表按“当前聊天可用的世界书”列出，与本轮酒馆有没有激活其中条目无关。你可以给见闻单独勾选趣味世界书。勾选后，SceneWorld 会读取该书中未禁用且有正文的条目，并受字符预算限制；不要求绿灯关键词在本轮触发。</div>
+    </div>`;
 }
+
+function initialSettlementSettingsHtml(actions, busy, state) {
+    const settings = actions?.getSettings?.() ?? {};
+    const anchor = state?.sync?.lastProcessedAssistantMessageId;
+    if (Number.isInteger(anchor)) {
+        return `<div class="card"><h2>结算批次</h2><p>当前聊天已经建立结算锚点 AI #${anchor}。后续只会从锚点之后继续，并且每次最多读取 10 条 AI 正文。</p><div class="note">如果确实需要从更早楼层重新构建世界动态，应先清理当前聊天的 sceneworld 数据，再选择“从指定楼层开始”。这样不会把旧状态和回溯结果混在一起。</div></div>`;
+    }
+    const mode = settings.initialSettlementMode === 'from_floor' ? 'from_floor' : 'latest';
+    const floor = Number.isFinite(Number(settings.initialStartFloor)) ? Math.max(0, Math.trunc(Number(settings.initialStartFloor))) : 0;
+    return `<div class="card"><h2>首次结算起点</h2><p>高楼层旧聊天默认直接从当前开始，不会把前几十层一次性塞进模型。每次世界推演最多只处理 10 条 AI 正文。</p><label><span class="meta">首次结算方式</span><select class="setting-text" data-initial-settlement-mode ${busy?'disabled':''}><option value="latest" ${mode==='latest'?'selected':''}>从当前开始（推荐：最近最多 10 条 AI 正文）</option><option value="from_floor" ${mode==='from_floor'?'selected':''}>从指定楼层开始（之后每批最多 10 条）</option></select></label>${mode==='from_floor'?`<label><span class="meta">起始楼层编号 #</span><input class="setting-text" type="number" min="0" step="1" data-initial-start-floor value="${floor}" ${busy?'disabled':''}></label>`:''}<div class="note">楼层编号与预览中的 #N 一致，指定楼层本身若是 AI 正文会包含在第一批中。开场白若位于 #0，可填写 0。指定起点的第一批成功后，当前聊天会沿结算锚点继续 10 条一批向后处理；全局首次模式会自动恢复为“从当前开始”，避免影响下一张旧聊天。</div></div>`;
+}
+
 function narrativeScopeSettingsHtml(actions, busy) {
     const settings = actions?.getSettings?.() ?? {};
     const tags = Array.isArray(settings.contentTags) && settings.contentTags.length ? settings.contentTags : ['content'];
     const display = tags.join(', ');
-    return `<div class="card"><h2>正文读取范围（测试期）</h2><p>世界动态只把完整标签范围内的 AI 文本当作剧情正文。默认读取 &lt;content&gt;...&lt;/content&gt;，标签外的思维链、状态栏、行动选项、小剧场等不会进入世界推演。</p><label><span class="meta">正文标签名（多个用逗号或换行分隔）</span><input class="setting-text" type="text" data-content-tags value="${escapeHtml(display)}" placeholder="content" ${busy?'disabled':''}></label><div class="note">例如填写 <b>content, story</b> 时，会读取 &lt;content&gt; 和 &lt;story&gt; 的完整闭合范围。正式版会把这项移入设置页。</div></div>`;
+    return `<div class="card"><h2>正文读取范围</h2><p>世界动态只把完整标签范围内的 AI 文本当作剧情正文。默认读取 &lt;content&gt;...&lt;/content&gt;，标签外的思维链、状态栏、行动选项、小剧场等不会进入世界推演。</p><label><span class="meta">正文标签名（多个用逗号或换行分隔）</span><input class="setting-text" type="text" data-content-tags value="${escapeHtml(display)}" placeholder="content" ${busy?'disabled':''}></label><div class="note">例如填写 <b>content, story</b> 时，会读取 &lt;content&gt; 和 &lt;story&gt; 的完整闭合范围。修改后立即保存到世界动态设置。</div></div>`;
 }
 
 function homeHtml(version, preview, busy, actions) {
@@ -99,13 +140,23 @@ function homeHtml(version, preview, busy, actions) {
     const batch=preview?.batch;
     const canSimulate=!!batch?.canSimulate && !busy;
     return `<div class="stack">
-        <div class="card"><h2>2.0 重构 · 阶段 5B：滚动世界脉络</h2><p>核心推演只保留当前世界快照、最多 20 条持续性世界事实和最近 5 次世界动态；可选读取柏宝书压缩长期历史，避免聊天越长上下文越膨胀。</p><div class="status-grid"><div class="status"><b>插件</b><span>已就绪 · ${escapeHtml(version)}</span></div><div class="status"><b>sceneworld 数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status"><b>自动推演</b><span>未加载 · 当前仅手动</span></div></div></div>
+        <div class="card"><h2>2.0 重构 · 阶段 5E：设置入口</h2><p>核心页面只保留世界状态与操作。正文范围、结算起点、世界书、柏宝书和后续模型配置统一从右上角设置入口管理。</p><div class="status-grid"><div class="status"><b>插件</b><span>已就绪 · ${escapeHtml(version)}</span></div><div class="status"><b>sceneworld 数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status"><b>自动推演</b><span>未加载 · 当前仅手动</span></div></div></div>
         ${currentWorldHtml(state)}
         ${actionSuggestionsHtml(state,busy)}
-        ${worldReferenceSettingsHtml(actions,busy)}
+        <div class="card"><h2>① 读取待结算剧情</h2><p>只在本地读取，不调用模型、不保存数据。只收集 AI 回复中命中正文标签的内容；USER 消息和标签外组件完全忽略；单批最多 10 条 AI 正文。</p><div class="actions"><button class="action" type="button" data-action="read-pending" ${busy?'disabled':''}>读取待结算剧情</button></div>${pendingPreviewHtml(preview)}</div>
+        <div class="card"><h2>② 手动结算本轮剧情</h2><p>确认后只调用一次当前模型，输出这批 AI 正文最终形成的稀疏净变化。</p><div class="actions"><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>确认并推演待结算剧情</button></div></div>
+    </div>`;
+}
+
+function settingsHtml(actions, busy) {
+    const info = inspectSceneWorldStorage();
+    const state = readSceneWorldState();
+    return `<div class="stack">
+        <div class="card"><h2>设置</h2><p>这里集中管理世界动态的读取范围、世界观参考和后续模型连接。设置保存在插件设置中，不会因为切换底部栏目而改变。</p><div class="status-grid"><div class="status"><b>模型连接</b><span>当前使用 SillyTavern 当前连接</span></div><div class="status"><b>自定义 API</b><span>下一阶段接入</span></div></div></div>
         ${narrativeScopeSettingsHtml(actions,busy)}
-        <div class="card"><h2>① 读取待结算剧情</h2><p>只在本地读取，不调用模型、不保存数据。只收集 AI 回复中命中正文标签的内容；USER 消息和标签外组件完全忽略。</p><div class="actions"><button class="action" type="button" data-action="read-pending" ${busy?'disabled':''}>读取待结算剧情</button></div>${pendingPreviewHtml(preview)}</div>
-        <div class="card"><h2>② 手动结算本轮剧情</h2><p>确认后只调用一次当前模型，输出这批 AI 正文最终形成的稀疏净变化。</p><div class="actions"><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>确认并推演待结算剧情</button>${info.dataExists?`<button class="action danger" type="button" data-action="clear" ${busy?'disabled':''}>清理当前聊天 sceneworld 数据</button>`:''}</div></div>
+        ${initialSettlementSettingsHtml(actions,busy,state)}
+        ${worldReferenceSettingsHtml(actions,busy)}
+        <div class="card"><h2>数据与维护</h2><p>这里只管理当前聊天的 SceneWorld 数据，不会删除聊天正文，也不会触碰其他插件。</p><div class="status-grid"><div class="status"><b>当前聊天数据</b><span>${info.dataExists?`已创建 · ${formatBytes(info.totalBytes)}`:'未创建'}</span></div><div class="status"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div></div>${info.dataExists?`<div class="actions"><button class="action danger" type="button" data-action="clear" ${busy?'disabled':''}>清理当前聊天 SceneWorld 数据</button></div>`:''}</div>
     </div>`;
 }
 
@@ -133,8 +184,9 @@ function repliesHtml(replies) {
     return `<div class="replies">${replies.map(reply=>`<div class="reply"><strong>${escapeHtml(reply.author||'匿名')}</strong>：${escapeHtml(reply.text||'')}</div>`).join('')}</div>`;
 }
 
-function opinionHtml(state, busy) {
+function opinionHtml(state, busy, actions) {
     if (!state) return emptySection('见闻');
+    const simulationReady = Number.isInteger(state?.sync?.lastProcessedAssistantMessageId);
     const opinion = state.publicOpinion || {};
     const guidance = state.guidance || {};
     const facts = Array.isArray(state.world?.facts) ? state.world.facts : [];
@@ -148,7 +200,7 @@ function opinionHtml(state, busy) {
         overheard:'路人耳语', gossip:'小道消息', curiosity:'本地趣闻', local_incident:'偶发事件', notice:'告示消息', slice:'生活切片',
     }[kind] || '市井闲闻');
     return `<div class="stack">
-      <div class="card"><h2>见闻</h2><p>这里用于主动观察镜头外的世界，不向正文注入任何内容。“公共动态”一次调用同时返回新闻 + 论坛；“街巷漫游”一次调用同时返回市井闲闻 + 去哪逛逛。</p><div class="status-grid"><div class="status"><b>公开事实</b><span>${publicCount} 条 public · ${traceCount} 条 trace</span></div><div class="status"><b>上次公共动态</b><span>${escapeHtml(timeLabel(opinion.updatedAt))}</span></div></div><div class="actions"><button class="action primary" type="button" data-action="refresh-opinion" ${busy?'disabled':''}>刷新公共动态</button><button class="action" type="button" data-action="refresh-street" ${busy?'disabled':''}>街巷漫游</button></div><div class="note">新闻 / 论坛属于当前世界公开面；市井闲闻是 NON-CANON 生活切片；去哪逛逛给出 3～5 个探索地点。行动建议已经并入核心世界推演，不再额外调用 API。</div></div>
+      <div class="card"><h2>见闻</h2><p>这里用于主动观察镜头外的世界，不向正文注入任何内容。“公共动态”一次调用同时返回新闻 + 论坛；“街巷漫游”一次调用同时返回市井闲闻 + 去哪逛逛。</p><div class="status-grid"><div class="status"><b>公开事实</b><span>${publicCount} 条 public · ${traceCount} 条 trace</span></div><div class="status"><b>上次公共动态</b><span>${escapeHtml(timeLabel(opinion.updatedAt))}</span></div></div><div class="actions"><button class="action primary" type="button" data-action="refresh-opinion" ${(busy||!simulationReady)?'disabled':''}>刷新公共动态</button><button class="action" type="button" data-action="refresh-street" ${(busy||!simulationReady)?'disabled':''}>街巷漫游</button></div>${simulationReady?'':'<div class="note warning">请先完成至少一次世界推演，建立当前世界状态后再生成见闻。</div>'}<div class="note">见闻不读取原始剧情正文，只使用当前世界状态、最近 5 次世界动态、最多 20 条持续性世界事实，以及你为“见闻”单独选择的世界书和可选柏宝书长期历史。</div></div>
       <div class="card"><div class="section-title"><h3>新闻</h3><span class="count">${news.length} 条</span></div>${news.length?`<div class="item-list">${news.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.headline)}</b>${favoriteButton(state,'news',item.id,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.category||'公共消息')}</span>${item.source?`<span class="chip">${escapeHtml(item.source)}</span>`:''}</div><p>${escapeHtml(item.summary)}</p>${item.scope?`<div class="meta">范围：${escapeHtml(item.scope)}</div>`:''}</div>`).join('')}</div>`:'<p class="empty">当前没有值得形成新闻的公开事件。</p>'}</div>
       <div class="card"><div class="section-title"><h3>论坛 / 公共讨论</h3><span class="count">${forum.length} 条</span></div>${forum.length?`<div class="item-list">${forum.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title)}</b>${favoriteButton(state,'forum',item.id,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.board||'公共讨论')}</span><span class="chip">${escapeHtml(item.claimStatus||'mixed')}</span></div><p>${escapeHtml(item.summary)}</p>${repliesHtml(item.replies)}</div>`).join('')}</div>`:'<p class="empty">当前没有值得记录的公共讨论。</p>'}</div>
       <div class="card"><div class="section-title"><h3>市井闲闻</h3><span class="badge noncanon">NON-CANON</span><span class="count">${street.length} 条</span></div><p>偏向路人耳语、小道消息、本地趣闻、生活琐事和偶发小事件，不再生成论坛评论串。上次生成：${escapeHtml(timeLabel(opinion.streetUpdatedAt))}</p>${street.length?`<div class="item-list">${street.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title)}</b>${favoriteButton(state,'street',item.id,busy)}</div><div class="chips"><span class="badge noncanon">NON-CANON</span><span class="chip">${escapeHtml(item.category||streetKindLabel(item.kind))}</span><span class="chip">${escapeHtml(streetKindLabel(item.kind))}</span></div>${item.speaker||item.place?`<div class="street-meta">${item.speaker?escapeHtml(item.speaker):escapeHtml(streetKindLabel(item.kind))}${item.place?` · ${escapeHtml(item.place)}`:''}</div>`:''}<div class="quote">${item.speaker?`“${escapeHtml(item.text)}”`:`【${escapeHtml(item.text)}】`}</div>${item.note&&item.note!==item.text?`<p>${escapeHtml(item.note)}</p>`:''}</div>`).join('')}</div>`:'<p class="empty">还没有生成市井闲闻。</p>'}</div>
@@ -187,24 +239,32 @@ function chronicleHtml(state, busy) {
 
 function emptySection(title){return`<div class="stack"><div class="card"><h2>${title}</h2><p>当前聊天尚未创建 sceneworld 数据。仅查看页面不会自动创建。</p></div></div>`}
 function listSection(title,items,mapper,emptyText='暂无记录。'){if(!Array.isArray(items)||!items.length)return`<div class="stack"><div class="card"><h2>${title}</h2><p class="empty">${emptyText}</p></div></div>`;return`<div class="stack"><div class="card"><h2>${title}</h2><div class="item-list">${items.map(item=>{const view=mapper(item)||{};return`<div class="item"><b>${escapeHtml(view.title||'')}</b>${view.body?`<p>${escapeHtml(view.body)}</p>`:''}${view.meta?`<div class="meta">${escapeHtml(view.meta)}</div>`:''}</div>`}).join('')}</div></div></div>`}
-function renderTab(tab,version,preview,busy,actions){const state=readSceneWorldState();if(tab==='此刻')return homeHtml(version,preview,busy,actions);if(tab==='人物')return peopleHtml(state);if(tab==='见闻')return opinionHtml(state,busy);if(tab==='脉络')return continuityHtml(state,busy,actions);if(tab==='纪事')return chronicleHtml(state,busy);return emptySection(tab)}
+function renderTab(tab,version,preview,busy,actions){const state=readSceneWorldState();if(tab==='此刻')return homeHtml(version,preview,busy,actions);if(tab==='人物')return peopleHtml(state);if(tab==='见闻')return opinionHtml(state,busy,actions);if(tab==='脉络')return continuityHtml(state,busy,actions);if(tab==='纪事')return chronicleHtml(state,busy);return emptySection(tab)}
 function countReportedChanges(summary){if(!summary)return 0;return (summary.worldPatch?1:0)+(summary.momentsUpsert||0)+(summary.momentsRemove||0)+(summary.factsUpsert||0)+(summary.factsRemove||0)+(summary.people||0)+(summary.recentDynamic?1:0)}
 
 export function createSceneWorldShell({ version, onClose, actions }) {
-    let host=document.getElementById(HOST_ID);if(host)host.remove();host=document.createElement('div');host.id=HOST_ID;const shadow=host.attachShadow({mode:'open'});let activeTab='此刻';let busy=false;let preview=null;
+    let host=document.getElementById(HOST_ID);if(host)host.remove();host=document.createElement('div');host.id=HOST_ID;const shadow=host.attachShadow({mode:'open'});let activeTab='此刻';let settingsOpen=false;let busy=false;let preview=null;
     const runBusy=async(task)=>{if(busy)return;busy=true;render();try{return await task()}finally{busy=false;render()}};
     const render=()=>{
-        shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop"><section class="panel" role="dialog" aria-modal="true" aria-label="世界动态"><header class="header"><div class="title">世界动态</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${renderTab(activeTab,version,preview,busy,actions)}</main><nav class="nav" aria-label="世界动态栏目">${TABS.map(tab=>`<button type="button" data-tab="${tab}" aria-selected="${tab===activeTab}">${tab}</button>`).join('')}</nav></section></div>`;
+        const pageTitle=settingsOpen?'世界动态 · 设置':'世界动态';
+        const settingsButtonLabel=settingsOpen?'返回世界动态':'打开设置';
+        const settingsButtonIcon=settingsOpen?'←':'⚙';
+        const mainHtml=settingsOpen?settingsHtml(actions,busy):renderTab(activeTab,version,preview,busy,actions);
+        const navHtml=settingsOpen?'':`<nav class="nav" aria-label="世界动态栏目">${TABS.map(tab=>`<button type="button" data-tab="${tab}" aria-selected="${tab===activeTab}">${tab}</button>`).join('')}</nav>`;
+        shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop"><section class="panel" role="dialog" aria-modal="true" aria-label="${settingsOpen?'世界动态设置':'世界动态'}"><header class="header"><div class="title">${pageTitle}</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="header-icon" type="button" data-action="settings-toggle" aria-label="${settingsButtonLabel}" title="${settingsButtonLabel}">${settingsButtonIcon}</button><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${mainHtml}</main>${navHtml}</section></div>`;
         shadow.querySelector('.close')?.addEventListener('click',()=>onClose?.());
+        shadow.querySelector('[data-action="settings-toggle"]')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;render()});
         shadow.querySelector('.backdrop')?.addEventListener('click',e=>{if(e.target===e.currentTarget)onClose?.()});
-        shadow.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{activeTab=button.dataset.tab||'此刻';render()}));
+        shadow.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{settingsOpen=false;activeTab=button.dataset.tab||'此刻';render()}));
         shadow.querySelectorAll('[data-world-ref-setting]').forEach(input=>input.addEventListener('change',()=>{try{actions?.updateSettings?.({[input.dataset.worldRefSetting]:input.checked});notify('世界观参考设置已保存','success');render()}catch(error){console.error('[SceneWorld] settings update failed',error);notify(`保存世界观参考设置失败：${error?.message||error}`,'error')}}));
-        shadow.querySelectorAll('[data-world-book]').forEach(input=>input.addEventListener('change',()=>{try{actions?.updateSettings?.({worldBookName:input.dataset.worldBook,worldBookEnabled:input.checked});notify('世界书传输选择已保存','success');render()}catch(error){console.error('[SceneWorld] world book setting failed',error);notify(`保存世界书选择失败：${error?.message||error}`,'error')}}));
+        shadow.querySelectorAll('[data-world-book]').forEach(input=>input.addEventListener('change',()=>{try{actions?.updateSettings?.({worldBookName:input.dataset.worldBook,worldBookPurpose:input.dataset.worldBookPurpose||'simulation',worldBookEnabled:input.checked});notify(`${input.dataset.worldBookPurpose==='observation'?'见闻':'世界推演'}世界书选择已保存`,'success');render()}catch(error){console.error('[SceneWorld] world book setting failed',error);notify(`保存世界书选择失败：${error?.message||error}`,'error')}}));
         shadow.querySelector('[data-content-tags]')?.addEventListener('change',event=>{try{const value=String(event.currentTarget?.value??'').trim();actions?.updateSettings?.({contentTags:value});preview=null;notify('正文标签设置已保存','success');render()}catch(error){console.error('[SceneWorld] content tag settings update failed',error);notify(`保存正文标签失败：${error?.message||error}`,'error')}});
-        shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged)notify(batch.anchorReason,'error');else if(!batch?.hasPending)notify('当前没有新的 AI 正文需要结算','info');else if(batch.overBudget)notify('待结算剧情超过当前单次安全预算，请查看界面说明','warning')}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待结算剧情失败：${error?.message||error}`,'error')}render()});
+        shadow.querySelector('[data-initial-settlement-mode]')?.addEventListener('change',event=>{try{const mode=String(event.currentTarget?.value??'latest')==='from_floor'?'from_floor':'latest';actions?.updateSettings?.({initialSettlementMode:mode});preview=null;notify(mode==='from_floor'?'首次结算已切换为从指定楼层开始':'首次结算已切换为从当前开始','success');render()}catch(error){console.error('[SceneWorld] initial settlement mode failed',error);notify(`保存首次结算方式失败：${error?.message||error}`,'error')}});
+        shadow.querySelector('[data-initial-start-floor]')?.addEventListener('change',event=>{try{const floor=Math.max(0,Math.trunc(Number(event.currentTarget?.value)||0));actions?.updateSettings?.({initialStartFloor:floor});preview=null;notify(`首次结算起点已设为 #${floor}`,'success');render()}catch(error){console.error('[SceneWorld] initial start floor failed',error);notify(`保存起始楼层失败：${error?.message||error}`,'error')}});
+        shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged)notify(batch.anchorReason,'error');else if(!batch?.hasPending)notify('当前没有新的 AI 正文需要结算','info');else if(batch.overBudget)notify('本批 10 条以内的正文仍超过单次安全预算，请查看界面说明','warning')}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待结算剧情失败：${error?.message||error}`,'error')}render()});
         shadow.querySelector('[data-action="simulate"]')?.addEventListener('click',()=>runBusy(async()=>{const batch=preview?.batch;if(!batch?.canSimulate)return;if(!confirm(`将调用一次当前 SillyTavern 模型，结算 #${batch.startId}～#${batch.endId} 共 ${batch.assistantCount} 条 AI 正文。继续吗？`))return;try{const result=await actions?.simulatePending?.(batch);preview=actions?.inspectPendingNarrative?.()??preview;const count=countReportedChanges(result?.changeSummary);const ref=result?.worldReference;const refText=ref?` · 世界观参考：${ref.characterDescriptionUsed?'角色描述 + ':''}${ref.selectedEntries||0} 条世界书条目`:'';const bb=result?.baibai;const bbText=bb?.enabled?(bb?.used?` · 柏宝书长期历史 ${bb.chars||0} 字符`:(bb?.available?' · 柏宝书本轮无可用长期历史':' · 柏宝书接口未检测到')):'';notify((count?`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`:`世界推演完成：结算 #${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`)+refText+bbText,'success')}catch(error){console.error('[SceneWorld] pending simulation failed',error);notify(`世界推演失败：${error?.message||error}`,'error')}}));
-        shadow.querySelector('[data-action="refresh-opinion"]')?.addEventListener('click',()=>runBusy(async()=>{try{const info=actions?.inspectPublicOpinion?.();if(info?.sourceCount>0&&!confirm(`将根据当前 ${info.publicCount} 条 public、${info.traceCount} 条 trace 世界事实调用一次模型刷新新闻与论坛。继续吗？`))return;const result=await actions?.refreshPublicOpinion?.();if(!result?.calledModel)notify('当前没有可用于公共动态的公开世界变化，新闻与论坛已保持为空','info');else if((result.newsCount||0)+(result.forumCount||0)===0)notify('公共动态刷新完成：当前没有值得记录的新闻或公共讨论','success');else {const ref=result?.worldReference;const refText=ref?` · 参考 ${ref.selectedEntries||0} 条世界书条目`:'';notify(`公共动态刷新完成：${result.newsCount||0} 条新闻，${result.forumCount||0} 条讨论${refText}`,'success')}}catch(error){console.error('[SceneWorld] public info failed',error);notify(`刷新公共动态失败：${error?.message||error}`,'error')}}));
-        shadow.querySelector('[data-action="refresh-street"]')?.addEventListener('click',()=>runBusy(async()=>{if(!confirm('“街巷漫游”将调用一次模型，同时生成 NON-CANON 市井闲闻和 3～5 个地点建议，不会写入世界事实。继续吗？'))return;try{const result=await actions?.refreshStreetOpinion?.();{const ref=result?.worldReference;const refText=ref?` · 参考 ${ref.selectedEntries||0} 条世界书条目`:'';notify(`街巷漫游已更新：${result?.itemCount||0} 条市井闲闻，${result?.placeCount||0} 个地点${refText}`,'success')}}catch(error){console.error('[SceneWorld] street opinion failed',error);notify(`街巷漫游失败：${error?.message||error}`,'error')}}));
+        shadow.querySelector('[data-action="refresh-opinion"]')?.addEventListener('click',()=>runBusy(async()=>{try{const info=actions?.inspectPublicOpinion?.();if(!info?.simulationReady)throw new Error('请先完成至少一次世界推演，建立当前世界状态后再生成见闻');if(info?.sourceCount>0&&!confirm(`将根据当前 ${info.publicCount} 条 public、${info.traceCount} 条 trace 世界事实调用一次模型刷新新闻与论坛。继续吗？`))return;const result=await actions?.refreshPublicOpinion?.();if(!result?.calledModel)notify('当前没有可用于公共动态的公开世界变化，新闻与论坛已保持为空','info');else if((result.newsCount||0)+(result.forumCount||0)===0)notify('公共动态刷新完成：当前没有值得记录的新闻或公共讨论','success');else {const ref=result?.worldReference;const refText=ref?` · 参考 ${ref.selectedEntries||0} 条世界书条目`:'';notify(`公共动态刷新完成：${result.newsCount||0} 条新闻，${result.forumCount||0} 条讨论${refText}`,'success')}}catch(error){console.error('[SceneWorld] public info failed',error);notify(`刷新公共动态失败：${error?.message||error}`,'error')}}));
+        shadow.querySelector('[data-action="refresh-street"]')?.addEventListener('click',()=>runBusy(async()=>{const info=actions?.inspectPublicOpinion?.();if(!info?.simulationReady){notify('请先完成至少一次世界推演，建立当前世界状态后再生成见闻','warning');return}if(!confirm('“街巷漫游”将调用一次模型，同时生成 NON-CANON 市井闲闻和 3～5 个地点建议，不会写入世界事实。继续吗？'))return;try{const result=await actions?.refreshStreetOpinion?.();{const ref=result?.worldReference;const refText=ref?` · 参考 ${ref.selectedEntries||0} 条世界书条目`:'';notify(`街巷漫游已更新：${result?.itemCount||0} 条市井闲闻，${result?.placeCount||0} 个地点${refText}`,'success')}}catch(error){console.error('[SceneWorld] street opinion failed',error);notify(`街巷漫游失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-insert-guidance]').forEach(button=>button.addEventListener('click',()=>{try{const state=readSceneWorldState();const kind=button.dataset.guidanceKind;const list=kind==='place'?state?.guidance?.places:state?.guidance?.actions;const item=Array.isArray(list)?list.find(entry=>entry?.id===button.dataset.insertGuidance):null;if(!item?.prompt)throw new Error('这条建议已经不存在，请重新生成');const inserted=actions?.putTextIntoChatInput?.(item.prompt);if(inserted===false)return;notify('已填入 SillyTavern 输入框','success');onClose?.()}catch(error){console.error('[SceneWorld] insert guidance failed',error);notify(`填入输入框失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-favorite-type]').forEach(button=>button.addEventListener('click',()=>runBusy(async()=>{try{await actions?.favoriteOpinion?.(button.dataset.favoriteType,button.dataset.favoriteId);notify('已收藏到纪事','success')}catch(error){console.error('[SceneWorld] favorite failed',error);notify(`收藏失败：${error?.message||error}`,'error')}})));
         shadow.querySelectorAll('[data-remove-chronicle]').forEach(button=>button.addEventListener('click',()=>runBusy(async()=>{try{await actions?.removeChronicle?.(button.dataset.removeChronicle);notify('已从纪事删除','success')}catch(error){console.error('[SceneWorld] chronicle remove failed',error);notify(`删除收藏失败：${error?.message||error}`,'error')}})));
@@ -212,7 +272,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelectorAll('[data-edit-continuity-fact]').forEach(button=>button.addEventListener('click',()=>runBusy(async()=>{try{const state=readSceneWorldState();const item=state?.world?.facts?.find(entry=>entry?.id===button.dataset.editContinuityFact);if(!item)throw new Error('这条持续性世界事实已经不存在');const value=prompt('修改持续性世界事实：',item.value||'');if(value===null)return;if(!String(value).trim())throw new Error('事实内容不能为空');await actions?.editContinuityFact?.(item.id,value);notify('持续性世界事实已手动修正','success')}catch(error){console.error('[SceneWorld] continuity fact edit failed',error);notify(`修改持续性世界事实失败：${error?.message||error}`,'error')}})));
         shadow.querySelector('[data-action="clear"]')?.addEventListener('click',()=>runBusy(async()=>{if(!confirm('只删除当前聊天的 chatMetadata.sceneworld 数据。不会删除聊天正文，也不会触碰其他插件数据。确定继续吗？'))return;try{const removed=await clearSceneWorldState();preview=actions?.inspectPendingNarrative?.()??null;notify(removed?'当前聊天的 sceneworld 数据已清理':'当前聊天没有 sceneworld 数据','success')}catch(error){console.error('[SceneWorld] clear state failed',error);notify(`清理数据失败：${error?.message||error}`,'error')}}));
     };
-    shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});
+    shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();if(settingsOpen){settingsOpen=false;render();return}onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});
     render();document.body.appendChild(host);return{host,refresh:render,onChatChanged(){preview=null;render()},destroy(){host?.remove()}};
 }
 

@@ -112,11 +112,18 @@ export function getCurrentWorldBooks() {
     }));
 }
 
-export function getCurrentWorldBookChoices() {
+export function getCurrentWorldBookChoices(purpose = 'simulation') {
     const settings = getSceneWorldSettings();
+    const mode = String(purpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
+    const selection = mode === 'observation'
+        ? settings.observationWorldBookSelection
+        : settings.simulationWorldBookSelection;
+    // 世界书是否出现在这里，只由“它是不是当前聊天可用的世界书”决定，
+    // 与这一轮酒馆有没有激活其中任何条目无关。
     return getCurrentWorldBooks().map(book => ({
         ...book,
-        enabled: settings.worldBookSelection?.[book.name] !== false,
+        enabled: selection?.[book.name] !== false,
+        purpose: mode,
     }));
 }
 
@@ -211,15 +218,19 @@ function greenEntryMatches(entry, corpus) {
     }
 }
 
-export function selectWorldInfoEntries(entries, corpus, maxChars = 16000) {
+export function selectWorldInfoEntries(entries, _corpus = '', maxChars = 16000) {
     const limit = Math.max(2000, Math.min(Number(maxChars) || 16000, 32000));
+    // SceneWorld 的“勾选世界书”是用户主动授权该书作为参考资料，
+    // 不再镜像酒馆本轮的绿灯触发结果：只要整本世界书被用户勾选，
+    // 其中未禁用且有正文的条目就有资格进入参考；最终仍受字符预算约束。
     const rows = (Array.isArray(entries) ? entries : []).map(entry => ({
         entry,
-        activation: entry.constant ? 'constant' : greenEntryMatches(entry, corpus) ? 'keyword' : '',
-    })).filter(row => row.activation);
+        activation: entry.constant ? 'constant' : 'selected-book',
+    }));
 
     rows.sort((a, b) => {
-        if (a.activation !== b.activation) return a.activation === 'constant' ? -1 : 1;
+        // 蓝灯常驻优先，然后按酒馆条目的顺序值与稳定 id 排序。
+        if (a.entry.constant !== b.entry.constant) return a.entry.constant ? -1 : 1;
         return b.entry.order - a.entry.order || a.entry.id.localeCompare(b.entry.id);
     });
 
@@ -242,7 +253,8 @@ export function selectWorldInfoEntries(entries, corpus, maxChars = 16000) {
         budgetChars: limit,
         activatedCount: rows.length,
         constantCount: selected.filter(item => item.activation === 'constant').length,
-        keywordCount: selected.filter(item => item.activation === 'keyword').length,
+        selectedBookEntryCount: selected.filter(item => item.activation === 'selected-book').length,
+        keywordCount: 0,
         omittedByBudget,
     };
 }
@@ -271,13 +283,17 @@ function stateCorpus(state) {
     ].map(value => clean(value, 1200)).filter(Boolean).join('\n');
 }
 
-export async function buildWorldReferenceContext({ state = null, queryText = '' } = {}) {
+export async function buildWorldReferenceContext({ state = null, queryText = '', purpose = 'simulation' } = {}) {
     const ctx = getContextSafe();
     const settings = getSceneWorldSettings();
-    if (!ctx) return { characterDescription: null, entries: [], stats: { reason: 'no-context' }, settings };
+    const mode = String(purpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
+    if (!ctx) return { characterDescription: null, entries: [], stats: { reason: 'no-context', purpose: mode }, settings, purpose: mode };
 
     const availableBooks = getCurrentWorldBooks();
-    const selectedBooks = availableBooks.filter(book => settings.worldBookSelection?.[book.name] !== false);
+    const selection = mode === 'observation'
+        ? settings.observationWorldBookSelection
+        : settings.simulationWorldBookSelection;
+    const selectedBooks = availableBooks.filter(book => selection?.[book.name] !== false);
     const entries = [];
     const seen = new Set();
     await loadSelectedBooks(ctx, selectedBooks, entries, seen);
@@ -285,24 +301,34 @@ export async function buildWorldReferenceContext({ state = null, queryText = '' 
     addEmbeddedCharacterBook(ctx, new Set(selectedBooks.map(book => book.name)), entries, seen);
 
     const corpus = `${clean(queryText, 32000)}\n${stateCorpus(state)}`;
-    const selectedEntries = selectWorldInfoEntries(entries, corpus, settings.worldInfoMaxChars);
-    const characterDescription = buildCharacterDescription(ctx, settings.includeCharacterDescription, settings.characterDescriptionMaxChars);
+    const maxChars = mode === 'observation'
+        ? settings.observationWorldInfoMaxChars
+        : settings.simulationWorldInfoMaxChars;
+    const selectedEntries = selectWorldInfoEntries(entries, corpus, maxChars);
+    // 角色描述只给核心世界推演使用；见闻只依赖推演后的 SceneWorld 状态、可选世界书与可选柏宝书。
+    const characterDescription = mode === 'simulation'
+        ? buildCharacterDescription(ctx, settings.includeCharacterDescription, settings.characterDescriptionMaxChars)
+        : null;
     return {
+        purpose: mode,
         characterDescription,
         entries: selectedEntries.entries,
         availableBooks,
         selectedBooks,
         stats: {
+            purpose: mode,
             availableBooks: availableBooks.length,
             selectedBooks: selectedBooks.length,
             loadedEntries: entries.length,
             selectedEntries: selectedEntries.entries.length,
             constantEntries: selectedEntries.constantCount,
-            keywordEntries: selectedEntries.keywordCount,
+            selectedBookEntries: selectedEntries.selectedBookEntryCount,
+            keywordEntries: 0,
             selectedChars: selectedEntries.usedChars,
             omittedByBudget: selectedEntries.omittedByBudget,
             characterDescriptionUsed: !!characterDescription,
             budgetChars: selectedEntries.budgetChars,
+            selectionIndependentOfActivation: true,
         },
         settings,
     };
@@ -316,8 +342,9 @@ export function formatWorldReferenceContext(reference) {
         blocks.push(`【角色描述】\n角色：${item.name || '未命名'}\n${item.description}`);
     }
     for (const entry of reference.entries || []) {
-        const strategy = entry.activation === 'constant' ? '蓝灯常驻' : '本轮触发';
+        const strategy = entry.activation === 'constant' ? '蓝灯常驻' : '用户勾选世界书';
         blocks.push(`【世界书｜${entry.source}｜${entry.label}｜${strategy}】\n${entry.content}`);
     }
-    return blocks.length ? blocks.join('\n\n') : '（本轮没有启用角色描述，也没有可传输的世界书条目）';
+    return blocks.length ? blocks.join('\n\n') : '（本轮没有可传输的世界书参考）';
 }
+
