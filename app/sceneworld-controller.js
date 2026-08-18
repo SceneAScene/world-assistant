@@ -2,7 +2,7 @@ import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
 import { getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
-import { getCurrentWorldBookChoices } from '../platform/world-reference.js';
+import { getCurrentWorldEntryChoices } from '../platform/world-reference.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
 import { favoriteOpinionItem, removeChronicleItem } from '../services/chronicle.js';
@@ -54,7 +54,7 @@ export function createSceneWorldController({ version }) {
                 refreshStreetOpinion: () => tasks.run('public-opinion-street', refreshStreetPublicOpinion),
                 putTextIntoChatInput,
                 getSettings: getSceneWorldSettings,
-                getWorldBooks: getCurrentWorldBookChoices,
+                getWorldEntries: getCurrentWorldEntryChoices,
                 updateSettings: updateSceneWorldSettings,
                 favoriteOpinion: (sourceType, sourceId) => tasks.run(`favorite:${sourceType}:${sourceId}`, () => favoriteOpinionItem(sourceType, sourceId)),
                 removeChronicle: id => tasks.run(`chronicle-remove:${id}`, () => removeChronicleItem(id)),

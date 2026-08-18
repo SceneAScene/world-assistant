@@ -4,10 +4,12 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     // 世界推演可以额外读取当前角色的“角色描述（Description）”。见闻不读取角色描述。
     includeCharacterDescription: true,
     characterDescriptionMaxChars: 5000,
-    // 世界推演与见闻分别维护世界书白名单。这里保存的是“整本世界书是否允许 SceneWorld 读取”，
-    // 与酒馆本轮有没有激活其中条目无关。未出现过的当前世界书默认允许，用户取消后保存 false。
-    simulationWorldBookSelection: Object.freeze({}),
-    observationWorldBookSelection: Object.freeze({}),
+    // 世界推演与见闻分别维护“世界书条目”白名单。
+    // 条目是否在 SillyTavern 中启用/常驻/关键词触发，不影响它能否出现在 SceneWorld 的选择列表。
+    // 首次发现一个条目时：若该条目在 SillyTavern 中启用，则 SceneWorld 默认勾选；若在酒馆中关闭，则默认不勾选。
+    // 用户一旦手动勾选/取消，SceneWorld 会保存显式选择，后续不再被酒馆启用状态覆盖。
+    simulationWorldEntrySelection: Object.freeze({}),
+    observationWorldEntrySelection: Object.freeze({}),
     simulationWorldInfoMaxChars: 16000,
     observationWorldInfoMaxChars: 16000,
     // Only text inside these complete assistant-message tags is treated as narrative canon.
@@ -63,26 +65,21 @@ export function getSceneWorldSettings() {
     };
     const contentTags = normalizeContentTags(merged.contentTags);
 
-    const normalizeBookSelection = value => {
+    const normalizeEntrySelection = value => {
         const sourceSelection = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
         const result = {};
-        for (const [name, enabled] of Object.entries(sourceSelection)) {
-            const key = String(name ?? '').trim();
+        for (const [id, enabled] of Object.entries(sourceSelection)) {
+            const key = String(id ?? '').trim();
             if (!key) continue;
-            result[key] = enabled !== false;
+            result[key] = enabled === true;
         }
         return result;
     };
 
-    // alpha.15 以前只有一份 worldBookSelection。升级时同时继承给“世界推演”和“见闻”，
-    // 之后两份选择各自独立保存，互不影响。
-    const legacyWorldBookSelection = normalizeBookSelection(source.worldBookSelection);
-    const simulationWorldBookSelection = 'simulationWorldBookSelection' in source
-        ? normalizeBookSelection(source.simulationWorldBookSelection)
-        : { ...legacyWorldBookSelection };
-    const observationWorldBookSelection = 'observationWorldBookSelection' in source
-        ? normalizeBookSelection(source.observationWorldBookSelection)
-        : { ...legacyWorldBookSelection };
+    // alpha.17 以前按“整本世界书”选择。alpha.18 改为条目级后不自动把整本书全部迁移为勾选，
+    // 避免服装、NSFW、状态栏等无关条目被一次性大量传输。用户需要在新列表中明确勾选需要的条目。
+    const simulationWorldEntrySelection = normalizeEntrySelection(source.simulationWorldEntrySelection);
+    const observationWorldEntrySelection = normalizeEntrySelection(source.observationWorldEntrySelection);
 
     // alpha.11 以前叫 includeCharacterBase；升级后只保留角色描述，不再发送性格/场景字段。
     const includeCharacterDescription = 'includeCharacterDescription' in source
@@ -116,8 +113,8 @@ export function getSceneWorldSettings() {
         ...merged,
         includeCharacterDescription,
         characterDescriptionMaxChars,
-        simulationWorldBookSelection,
-        observationWorldBookSelection,
+        simulationWorldEntrySelection,
+        observationWorldEntrySelection,
         simulationWorldInfoMaxChars,
         observationWorldInfoMaxChars,
         contentTags: contentTags.length ? contentTags : ['content'],
@@ -135,8 +132,8 @@ export function updateSceneWorldSettings(patch) {
     const current = getSceneWorldSettings();
     const next = {
         ...current,
-        simulationWorldBookSelection: { ...current.simulationWorldBookSelection },
-        observationWorldBookSelection: { ...current.observationWorldBookSelection },
+        simulationWorldEntrySelection: { ...current.simulationWorldEntrySelection },
+        observationWorldEntrySelection: { ...current.observationWorldEntrySelection },
     };
     for (const key of ['includeCharacterDescription', 'contentFallbackToWholeMessage', 'simulationUseBaiBaiBook', 'observationUseBaiBaiBook']) {
         if (key in patch) next[key] = patch[key] === true;
@@ -159,25 +156,34 @@ export function updateSceneWorldSettings(patch) {
     const normalizeIncomingSelection = value => {
         const normalized = {};
         if (!value || typeof value !== 'object' || Array.isArray(value)) return normalized;
-        for (const [name, enabled] of Object.entries(value)) {
-            const key = String(name ?? '').trim();
+        for (const [id, enabled] of Object.entries(value)) {
+            const key = String(id ?? '').trim();
             if (!key) continue;
-            normalized[key] = enabled !== false;
+            normalized[key] = enabled === true;
         }
         return normalized;
     };
-    if ('simulationWorldBookSelection' in patch) {
-        next.simulationWorldBookSelection = normalizeIncomingSelection(patch.simulationWorldBookSelection);
+    if ('simulationWorldEntrySelection' in patch) {
+        next.simulationWorldEntrySelection = normalizeIncomingSelection(patch.simulationWorldEntrySelection);
     }
-    if ('observationWorldBookSelection' in patch) {
-        next.observationWorldBookSelection = normalizeIncomingSelection(patch.observationWorldBookSelection);
+    if ('observationWorldEntrySelection' in patch) {
+        next.observationWorldEntrySelection = normalizeIncomingSelection(patch.observationWorldEntrySelection);
     }
-    if ('worldBookName' in patch) {
-        const name = String(patch.worldBookName ?? '').trim();
-        const purpose = String(patch.worldBookPurpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
-        if (name) {
-            const key = purpose === 'observation' ? 'observationWorldBookSelection' : 'simulationWorldBookSelection';
-            next[key][name] = patch.worldBookEnabled !== false;
+    if ('worldEntryId' in patch) {
+        const id = String(patch.worldEntryId ?? '').trim();
+        const purpose = String(patch.worldEntryPurpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
+        if (id) {
+            const key = purpose === 'observation' ? 'observationWorldEntrySelection' : 'simulationWorldEntrySelection';
+            next[key][id] = patch.worldEntryEnabled === true;
+        }
+    }
+    if ('worldEntryIds' in patch && Array.isArray(patch.worldEntryIds)) {
+        const purpose = String(patch.worldEntryPurpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
+        const key = purpose === 'observation' ? 'observationWorldEntrySelection' : 'simulationWorldEntrySelection';
+        const enabled = patch.worldEntryEnabled === true;
+        for (const rawId of patch.worldEntryIds) {
+            const id = String(rawId ?? '').trim();
+            if (id) next[key][id] = enabled;
         }
     }
     if ('contentTags' in patch) {
@@ -192,6 +198,8 @@ export function updateSceneWorldSettings(patch) {
     delete next.includeGlobalWorldInfo;
     delete next.characterBaseMaxChars;
     delete next.worldBookSelection;
+    delete next.simulationWorldBookSelection;
+    delete next.observationWorldBookSelection;
     delete next.worldInfoMaxChars;
     delete next.useBaiBaiBook;
 
@@ -200,8 +208,8 @@ export function updateSceneWorldSettings(patch) {
     return {
         ...next,
         contentTags: [...next.contentTags],
-        simulationWorldBookSelection: { ...next.simulationWorldBookSelection },
-        observationWorldBookSelection: { ...next.observationWorldBookSelection },
+        simulationWorldEntrySelection: { ...next.simulationWorldEntrySelection },
+        observationWorldEntrySelection: { ...next.observationWorldEntrySelection },
     };
 }
 

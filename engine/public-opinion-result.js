@@ -131,7 +131,7 @@ export function normalizeCanonicalOpinionPayload(payload, { sources, generatedAt
         const title = cleanText(item.title, 180);
         const summary = cleanText(item.summary ?? item.text, 900);
         const relatedFactIds = uniqueStrings(item.relatedFactIds ?? item.related_fact_ids, forumIds);
-        if (!title || !summary || !relatedFactIds.length) return null;
+        if (!title || !summary) return null;
         const statusRaw = cleanText(item.claimStatus ?? item.claim_status, 20);
         const referencesTrace = relatedFactIds.some(id => sourceList.find(source => source.id === id)?.publicity === 'trace');
         const claimStatus = referencesTrace

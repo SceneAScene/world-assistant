@@ -104,20 +104,6 @@ export async function refreshCanonicalPublicOpinion() {
     const sourceFingerprint = publicOpinionSourceFingerprint(base);
     const generatedAt = new Date().toISOString();
 
-    if (!sources.length) {
-        const next = clone(base);
-        next.publicOpinion = {
-            ...(next.publicOpinion || {}),
-            updatedAt: generatedAt,
-            sourceFingerprint,
-            news: [],
-            forum: [],
-            streetUpdatedAt: next.publicOpinion?.streetUpdatedAt ?? null,
-            street: Array.isArray(next.publicOpinion?.street) ? next.publicOpinion.street : [],
-        };
-        const saved = await commitSceneWorldState(next);
-        return { calledModel: false, state: saved, newsCount: 0, forumCount: 0, reason: 'no-public-sources' };
-    }
 
     const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base), purpose: 'observation' });
     const baibai = buildBaiBaiBookHistoryContext({ purpose: 'observation' });
@@ -156,7 +142,7 @@ export async function refreshCanonicalPublicOpinion() {
         raw,
         newsCount: normalized.news.length,
         forumCount: normalized.forum.length,
-        reason: normalized.news.length || normalized.forum.length ? 'generated' : 'no-significant-opinion',
+        reason: normalized.news.length || normalized.forum.length ? 'generated' : 'empty-generated',
         worldReference: reference.stats,
         baibai: baibai.stats,
     };
@@ -180,6 +166,9 @@ export async function refreshStreetPublicOpinion() {
     const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
     const payload = parsePublicOpinionResponse(raw);
     const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
+    if (normalized.street.length < 3 || normalized.places.length < 3) {
+        throw new Error(`街巷漫游结果不完整：市井闲闻 ${normalized.street.length} 条、地点 ${normalized.places.length} 个；要求至少各 3 条，本次结果未保存`);
+    }
 
     const latest = ensureState();
     // Street wander is non-canon, but do not save it into a different chat/state after a switch or reset.
