@@ -1,5 +1,37 @@
-import { getContext } from '../../../../extensions.js';
-import { generateRaw } from '../../../../../script.js';
+import { getContext, extension_settings } from '../../../../extensions.js';
+import { generateRaw, saveSettingsDebounced } from '../../../../../script.js';
+export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
+    includeCharacterBase: true,
+    includeCharacterWorldInfo: true,
+    includeChatWorldInfo: true,
+    includeGlobalWorldInfo: false,
+    characterBaseMaxChars: 5000,
+    worldInfoMaxChars: 12000,
+});
+
+export function getSceneWorldSettings() {
+    const raw = extension_settings?.sceneworld;
+    return {
+        ...DEFAULT_SCENEWORLD_SETTINGS,
+        ...(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}),
+    };
+}
+
+export function updateSceneWorldSettings(patch) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return getSceneWorldSettings();
+    const current = getSceneWorldSettings();
+    const next = { ...current };
+    for (const key of ['includeCharacterBase', 'includeCharacterWorldInfo', 'includeChatWorldInfo', 'includeGlobalWorldInfo']) {
+        if (key in patch) next[key] = patch[key] === true;
+    }
+    for (const [key, min, max] of [['characterBaseMaxChars', 1000, 10000], ['worldInfoMaxChars', 1000, 24000]]) {
+        if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
+    }
+    extension_settings.sceneworld = next;
+    saveSettingsDebounced?.();
+    return { ...next };
+}
+
 
 export function getContextSafe() {
     try {

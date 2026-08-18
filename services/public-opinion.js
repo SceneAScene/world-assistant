@@ -11,6 +11,7 @@ import {
     parsePublicOpinionResponse,
 } from '../engine/public-opinion-result.js';
 import { generateWithCurrentConnection } from '../platform/sillytavern.js';
+import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 
 function clone(value) {
     if (typeof structuredClone === 'function') return structuredClone(value);
@@ -32,8 +33,13 @@ function knownLocationCorpus(state) {
     ].map(value => String(value ?? '').trim()).filter(Boolean).join('\n');
 }
 
-function hardenPlaces(state, places) {
-    const corpus = knownLocationCorpus(state);
+function hardenPlaces(state, places, reference = null) {
+    const referenceCorpus = [
+        reference?.characterBase?.description,
+        reference?.characterBase?.scenario,
+        ...(Array.isArray(reference?.entries) ? reference.entries.map(entry => entry?.content) : []),
+    ].map(value => String(value ?? '').trim()).filter(Boolean).join('\n');
+    const corpus = `${knownLocationCorpus(state)}\n${referenceCorpus}`;
     return (Array.isArray(places) ? places : []).map(place => ({
         ...place,
         established: Boolean(place?.established && place?.name && corpus.includes(String(place.name))),
@@ -74,7 +80,8 @@ export async function refreshCanonicalPublicOpinion() {
         return { calledModel: false, state: saved, newsCount: 0, forumCount: 0, reason: 'no-public-sources' };
     }
 
-    const messages = buildCanonicalPublicOpinionMessages(base);
+    const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base) });
+    const messages = buildCanonicalPublicOpinionMessages(base, { worldReferenceText: formatWorldReferenceContext(reference) });
     const raw = await generateWithCurrentConnection(messages, { responseLength: 1700 });
     const payload = parsePublicOpinionResponse(raw);
     const normalized = normalizeCanonicalOpinionPayload(payload, { sources, generatedAt });
@@ -102,6 +109,7 @@ export async function refreshCanonicalPublicOpinion() {
         newsCount: normalized.news.length,
         forumCount: normalized.forum.length,
         reason: normalized.news.length || normalized.forum.length ? 'generated' : 'no-significant-opinion',
+        worldReference: reference.stats,
     };
 }
 
@@ -109,7 +117,8 @@ export async function refreshStreetPublicOpinion() {
     const base = ensureState();
     const stateUpdatedAt = String(base.updatedAt || '');
     const generatedAt = new Date().toISOString();
-    const messages = buildStreetPublicOpinionMessages(base);
+    const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base) });
+    const messages = buildStreetPublicOpinionMessages(base, { worldReferenceText: formatWorldReferenceContext(reference) });
     const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
     const payload = parsePublicOpinionResponse(raw);
     const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
@@ -117,7 +126,7 @@ export async function refreshStreetPublicOpinion() {
     const latest = ensureState();
     // Street wander is non-canon, but do not save it into a different chat/state after a switch or reset.
     if (String(latest.createdAt || '') !== String(base.createdAt || '')) {
-        throw new Error('生成“随便逛逛”期间当前 sceneworld 状态已切换，本次结果未保存');
+        throw new Error('生成“街巷漫游”期间当前 sceneworld 状态已切换，本次结果未保存');
     }
     const next = clone(latest);
     next.publicOpinion = {
@@ -131,10 +140,10 @@ export async function refreshStreetPublicOpinion() {
     };
     next.guidance = next.guidance && typeof next.guidance === 'object' ? next.guidance : { actions: [], places: [] };
     next.guidance.placesUpdatedAt = generatedAt;
-    next.guidance.places = hardenPlaces(latest, normalized.places);
+    next.guidance.places = hardenPlaces(latest, normalized.places, reference);
     next.guidance.actions = Array.isArray(next.guidance.actions) ? next.guidance.actions : [];
     next.guidance.actionsUpdatedAt = next.guidance.actionsUpdatedAt ?? null;
     next.guidance.actionsSourceMessageId = Number.isInteger(next.guidance.actionsSourceMessageId) ? next.guidance.actionsSourceMessageId : null;
     const saved = await commitSceneWorldState(next);
-    return { calledModel: true, state: saved, raw, itemCount: normalized.street.length, placeCount: next.guidance.places.length, baseUpdatedAt: stateUpdatedAt };
+    return { calledModel: true, state: saved, raw, itemCount: normalized.street.length, placeCount: next.guidance.places.length, baseUpdatedAt: stateUpdatedAt, worldReference: reference.stats };
 }

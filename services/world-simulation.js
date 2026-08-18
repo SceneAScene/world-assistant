@@ -3,6 +3,7 @@ import { commitSceneWorldState, readSceneWorldState } from '../data/sceneworld-s
 import { buildManualSimulationMessages } from '../engine/sceneworld-prompts.js';
 import { applySimulationPayload, parseSimulationResponse, summarizeSimulationPayload } from '../engine/simulation-result.js';
 import { generateWithCurrentConnection } from '../platform/sillytavern.js';
+import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { readPendingNarrativeBatch } from './narrative-reader.js';
 
 function batchSource(batch) {
@@ -40,12 +41,20 @@ export async function simulatePendingNarrative(expectedBatch = null) {
     }
 
     const base = persisted ?? createEmptySceneWorldState();
-    const messages = buildManualSimulationMessages({ state: base, batch });
+    const reference = await buildWorldReferenceContext({
+        state: base,
+        queryText: [...(batch.preContext || []), ...(batch.pendingMessages || [])].map(item => item?.text || '').join('\n'),
+    });
+    const messages = buildManualSimulationMessages({
+        state: base,
+        batch,
+        worldReferenceText: formatWorldReferenceContext(reference),
+    });
     const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
     const payload = parseSimulationResponse(raw);
     const changeSummary = summarizeSimulationPayload(payload);
     const source = batchSource(batch);
     const next = applySimulationPayload(base, payload, source);
     const saved = await commitSceneWorldState(next);
-    return { batch, source, state: saved, raw, changeSummary };
+    return { batch, source, state: saved, raw, changeSummary, worldReference: reference.stats };
 }

@@ -2,6 +2,26 @@ function cleanText(value, max = 2000) {
     return String(value ?? '').trim().slice(0, max);
 }
 
+function stripOuterSpeechWrappers(value, max = 2000) {
+    let text = cleanText(value, max);
+    const pairs = [
+        ['“', '”'], ['「', '」'], ['『', '』'], ['"', '"'], ["'", "'"], ['【', '】'], ['[', ']'],
+    ];
+    let changed = true;
+    while (text && changed) {
+        changed = false;
+        const trimmed = text.trim();
+        for (const [left, right] of pairs) {
+            if (trimmed.length >= left.length + right.length + 1 && trimmed.startsWith(left) && trimmed.endsWith(right)) {
+                text = trimmed.slice(left.length, trimmed.length - right.length).trim();
+                changed = true;
+                break;
+            }
+        }
+    }
+    return cleanText(text, max);
+}
+
 function balancedObjectFrom(text, start) {
     let depth = 0;
     let inString = false;
@@ -138,17 +158,18 @@ export function normalizeStreetOpinionPayload(payload, { generatedAt = new Date(
     const items = [];
     for (const [index, item] of (Array.isArray(payload?.street) ? payload.street : []).entries()) {
         if (!item || typeof item !== 'object') continue;
-        const title = cleanText(item.title ?? item.category, 180);
-        const text = cleanText(item.text ?? item.quote ?? item.summary, 900);
+        const title = stripOuterSpeechWrappers(item.title ?? item.category, 180);
+        const text = stripOuterSpeechWrappers(item.text ?? item.quote ?? item.summary, 900);
         if (!title || !text) continue;
         const kindRaw = cleanText(item.kind, 30).toLowerCase();
+        const kind = allowedKinds.has(kindRaw) ? kindRaw : 'slice';
         items.push({
             id: hash(`${generatedAt}|street|${index}|${title}|${text}`, 'street'),
-            kind: allowedKinds.has(kindRaw) ? kindRaw : 'slice',
+            kind,
             category: cleanText(item.category, 60) || '市井闲闻',
             title,
             text,
-            speaker: cleanText(item.speaker ?? item.author, 100),
+            speaker: kind === 'notice' ? '' : cleanText(item.speaker ?? item.author, 100),
             place: cleanText(item.place ?? item.location, 140),
             note: cleanText(item.note ?? item.context, 700),
             generatedAt,

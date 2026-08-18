@@ -37,7 +37,7 @@ export function publicOpinionSourceFingerprint(state) {
     }));
 }
 
-export function buildCanonicalPublicOpinionMessages(state) {
+export function buildCanonicalPublicOpinionMessages(state, { worldReferenceText = '' } = {}) {
     const sources = eligiblePublicOpinionSources(state);
     const system = `你是 SceneWorld（世界动态）的公共舆情整理器。你只负责把“社会已经能够接触到的信息”整理成新闻与公共讨论，不创造新的世界事实，也不续写剧情。
 
@@ -50,7 +50,7 @@ export function buildCanonicalPublicOpinionMessages(state) {
 6. 论坛允许误解、传闻、立场冲突和普通人的猜测；必须用 claimStatus=fact|mixed|rumor 标识。
 7. 只输出严格 JSON，不要 Markdown 或解释。`;
 
-    const prompt = `当前世界时间：${cleanText(state?.world?.time, 120) || '未明确'}
+    const prompt = `世界观参考（只用于时代、地点、组织和表达形式，不是新闻事实来源）：\n${worldReferenceText || '（未提供）'}\n\n当前世界时间：${cleanText(state?.world?.time, 120) || '未明确'}
 当前地点/范围：${cleanText(state?.world?.location, 240) || '未明确'}
 
 可用于舆情的公开来源：
@@ -86,7 +86,7 @@ ${JSON.stringify(sources, null, 2)}
     return [{ role: 'system', content: system }, { role: 'user', content: prompt }];
 }
 
-export function buildStreetPublicOpinionMessages(state) {
+export function buildStreetPublicOpinionMessages(state, { worldReferenceText = '' } = {}) {
     const context = {
         time: cleanText(state?.world?.time, 120),
         location: cleanText(state?.world?.location, 240),
@@ -103,11 +103,11 @@ export function buildStreetPublicOpinionMessages(state) {
 6. 只能借 context 判断时代感、语言气质和生活环境；不得泄露角色私事、隐藏秘密、private/trace 真相，也不得把当前主线换皮重写。
 7. 现代、古风、中世纪、科幻等自然适配语境，不要硬套现代互联网词汇。
 8. 内容以小事、琐事和生活质感为主，允许偶尔出现治安、物价、天气等地方性消息，但不要每条都升级成大事件。
-9. 去哪逛逛必须给 3～5 个地点建议；优先已有或自然可达地点，也可给符合世界语境的普通场所灵感，但灵感地点必须 established=false。
-10. 地点 prompt 要写成可直接填入 SillyTavern 输入框的简短剧情引子，不得宣称结果已经发生。
-11. 只输出严格 JSON。`;
-    const prompt = `环境提示：
-${JSON.stringify(context, null, 2)}
+9. text 字段不要自行包裹任何外层引号、书名号或方括号；程序会统一渲染：有 speaker 的说话内容使用一对中文双引号“”；没有 speaker 的公告/描述/现场见闻使用一对【】。
+10. 去哪逛逛必须给 3～5 个地点建议；优先已有或自然可达地点，也可给符合世界语境的普通场所灵感，但灵感地点必须 established=false。
+11. 地点 prompt 要写成可直接填入 SillyTavern 输入框的简短剧情引子，不得宣称结果已经发生。
+12. 只输出严格 JSON。`;
+    const prompt = `世界观参考（只用于时代、地理、生活方式与已有场所约束；不能把其中的背景内容宣称为本轮已发生事件）：\n${worldReferenceText || '（未提供）'}\n\n环境提示：\n${JSON.stringify(context, null, 2)}
 
 请返回：
 {

@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 9;
+export const SCENEWORLD_SCHEMA_VERSION = 10;
 
 function nowIso() {
     return new Date().toISOString();
@@ -11,6 +11,24 @@ function clone(value) {
 
 function text(value, max = 2000) {
     return String(value ?? '').trim().slice(0, max);
+}
+
+function stripOuterDisplayWrappers(value, max = 2000) {
+    let out = text(value, max);
+    const pairs = [['“','”'], ['「','」'], ['『','』'], ['"','"'], ["'","'"], ['【','】'], ['[',']']];
+    let changed = true;
+    while (out && changed) {
+        changed = false;
+        const trimmed = out.trim();
+        for (const [left, right] of pairs) {
+            if (trimmed.length > left.length + right.length && trimmed.startsWith(left) && trimmed.endsWith(right)) {
+                out = trimmed.slice(left.length, trimmed.length - right.length).trim();
+                changed = true;
+                break;
+            }
+        }
+    }
+    return text(out, max);
 }
 
 function normalizeKnowledge(items) {
@@ -160,8 +178,8 @@ function normalizeStreetItems(items) {
         if (!item || typeof item !== 'object') return null;
         const kindRaw = text(item.kind, 30).toLowerCase();
         const kind = allowedKinds.has(kindRaw) ? kindRaw : 'slice';
-        const title = text(item.title ?? item.headline ?? item.category, 180);
-        const body = text(item.text ?? item.quote ?? item.summary, 900);
+        const title = stripOuterDisplayWrappers(item.title ?? item.headline ?? item.category, 180);
+        const body = stripOuterDisplayWrappers(item.text ?? item.quote ?? item.summary, 900);
         if (!title || !body) return null;
         return {
             id: text(item.id, 140),
@@ -169,7 +187,7 @@ function normalizeStreetItems(items) {
             category: text(item.category, 60) || '市井闲闻',
             title,
             text: body,
-            speaker: text(item.speaker ?? item.author, 100),
+            speaker: kind === 'notice' ? '' : text(item.speaker ?? item.author, 100),
             place: text(item.place ?? item.location, 140),
             note: text(item.note ?? item.context ?? item.summary, 700),
             generatedAt: text(item.generatedAt, 80) || null,

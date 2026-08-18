@@ -32,7 +32,7 @@ export async function favoriteOpinionItem(sourceType, sourceId) {
 
     const title = source.headline || source.title || source.category || '收藏内容';
     const summary = source.summary || source.text || source.note || '';
-    const sourceLabel = sourceType === 'news' ? '新闻' : sourceType === 'forum' ? '论坛' : sourceType === 'street' ? '市井闲闻' : '随便逛逛';
+    const sourceLabel = sourceType === 'news' ? '新闻' : sourceType === 'forum' ? '论坛' : sourceType === 'street' ? '市井闲闻' : '生活灵感';
     return updateSceneWorldState(next => {
         const chronicle = Array.isArray(next.chronicle) ? next.chronicle : [];
         chronicle.push({

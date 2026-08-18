@@ -9,7 +9,8 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 
 连续结算规则：
 - “已结算 AI 前置正文”仅用于理解承接和场景，不得把其中已经发生过的变化再次结算。
-- 世界事实来源只允许 AI 回复正文。USER 消息不会提供给你，也不得假设或补全 USER 指令中的内容。
+- 当前剧情事实来源只允许 AI 回复正文。USER 消息不会提供给你，也不得假设或补全 USER 指令中的内容。
+- “世界观参考”只用于约束世界规则、人物基础、地理、时代和制度；世界书里写着某地点/组织存在，不等于本轮它发生了新事件。任何“当前发生了什么”仍需 AI 正文或既有 SceneWorld 权威状态支持。
 - “本轮待结算 AI 正文”可能包含多条 AI 回复；必须整体理解，然后结算区间结束时的最终世界状态。
 - 如果同一状态在待结算区间中多次变化，以区间末尾明确成立的状态为当前状态；中间过程只有在未来忘记会造成明显矛盾时才进入世界事实/世界线记忆。
 - 不要因为待结算区间包含多楼，就逐楼重复输出同一人物或同一事实；应输出净变化。
@@ -78,10 +79,10 @@ function transcript(messages) {
         .join('\n\n');
 }
 
-export function buildManualSimulationMessages({ state, batch }) {
+export function buildManualSimulationMessages({ state, batch, worldReferenceText = '' }) {
     const preContext = transcript(batch?.preContext);
     const pending = transcript(batch?.pendingMessages);
-    const userPrompt = `当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n已结算 AI 前置正文（仅帮助理解，不得重复结算）：\n${preContext || '（无）'}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n区间指纹：${batch.rangeFingerprint}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空；没有实际变化时不要填占位句：\n{
+    const userPrompt = `世界观参考（只作为设定约束，不代表当前事件已经发生）：\n${worldReferenceText || '（未提供）'}\n\n当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n已结算 AI 前置正文（仅帮助理解，不得重复结算）：\n${preContext || '（无）'}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n区间指纹：${batch.rangeFingerprint}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空；没有实际变化时不要填占位句：\n{
   "world_patch": {
     "time": null,
     "location": "",
