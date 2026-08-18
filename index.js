@@ -2,7 +2,7 @@ import { createSceneWorldController } from './app/sceneworld-controller.js';
 import { mountWandEntry, unmountWandEntry } from './ui/wand-entry.js';
 import { notify } from './platform/sillytavern.js';
 
-const VERSION = '2.0.0-alpha.1';
+const VERSION = '2.0.0-alpha.2';
 let controller = null;
 let activated = false;
 
@@ -26,7 +26,7 @@ export function onActivate() {
         ensureController().initialize();
         mountWandEntry(openFromWand);
         activated = true;
-        console.info(`[SceneWorld] ${VERSION} activated (phase 1 shell only)`);
+        console.info(`[SceneWorld] ${VERSION} activated (phase 2 data layer)`);
     } catch (error) {
         activated = false;
         console.error('[SceneWorld] activation failed', error);

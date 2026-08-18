@@ -1,6 +1,7 @@
 import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
+import { getSceneWorldEventApi } from '../platform/sillytavern.js';
 import { createSceneWorldShell, removeSceneWorldShell } from '../ui/sceneworld-shell.js';
 
 export function createSceneWorldController({ version }) {
@@ -14,7 +15,12 @@ export function createSceneWorldController({ version }) {
         if (initialized) return;
         initialized = true;
 
-        // Runtime namespace only. No SillyTavern settings/chat data are created here.
+        const { source, types } = getSceneWorldEventApi();
+        const chatChanged = types?.CHAT_CHANGED ?? types?.chat_changed;
+        if (source && chatChanged) {
+            events.onEmitter(source, chatChanged, () => shell?.refresh?.());
+        }
+
         publicApi = Object.freeze({
             version,
             open,

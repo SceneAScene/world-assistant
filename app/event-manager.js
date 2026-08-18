@@ -16,6 +16,18 @@ export class EventManager {
         return this.addCleanup(() => target.removeEventListener(type, handler, options));
     }
 
+    onEmitter(source, eventName, handler) {
+        if (!source || !eventName || typeof handler !== 'function') return () => {};
+        if (typeof source.on === 'function') {
+            source.on(eventName, handler);
+            return this.addCleanup(() => {
+                if (typeof source.off === 'function') source.off(eventName, handler);
+                else if (typeof source.removeListener === 'function') source.removeListener(eventName, handler);
+            });
+        }
+        return () => {};
+    }
+
     clear() {
         for (const cleanup of [...this.#cleanups]) {
             this.#cleanups.delete(cleanup);
