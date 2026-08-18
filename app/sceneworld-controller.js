@@ -2,6 +2,7 @@ import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
 import { getSceneWorldEventApi } from '../platform/sillytavern.js';
+import { inspectLatestNarrative, simulateLatestNarrative } from '../services/world-simulation.js';
 import { createSceneWorldShell, removeSceneWorldShell } from '../ui/sceneworld-shell.js';
 
 export function createSceneWorldController({ version }) {
@@ -18,7 +19,7 @@ export function createSceneWorldController({ version }) {
         const { source, types } = getSceneWorldEventApi();
         const chatChanged = types?.CHAT_CHANGED ?? types?.chat_changed;
         if (source && chatChanged) {
-            events.onEmitter(source, chatChanged, () => shell?.refresh?.());
+            events.onEmitter(source, chatChanged, () => shell?.onChatChanged?.());
         }
 
         publicApi = Object.freeze({
@@ -37,7 +38,15 @@ export function createSceneWorldController({ version }) {
     function open() {
         if (!initialized) initialize();
         shell?.destroy();
-        shell = createSceneWorldShell({ version, onClose: close });
+        shell = createSceneWorldShell({
+            version,
+            onClose: close,
+            actions: {
+                inspectLatestNarrative,
+                simulateLatest: expectedSource => tasks.run('manual-simulation', () => simulateLatestNarrative(expectedSource)),
+                isTaskRunning: key => tasks.isRunning(key),
+            },
+        });
     }
 
     function close() {

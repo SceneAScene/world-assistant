@@ -1,4 +1,5 @@
 import { getContext } from '../../../../extensions.js';
+import { generateRaw } from '../../../../../script.js';
 
 export function getContextSafe() {
     try {
@@ -11,6 +12,11 @@ export function getContextSafe() {
 
 export function getCurrentChatMetadata() {
     return getContextSafe()?.chatMetadata ?? null;
+}
+
+export function getCurrentChatMessages() {
+    const chat = getContextSafe()?.chat;
+    return Array.isArray(chat) ? chat : [];
 }
 
 export function getCurrentChatId() {
@@ -52,6 +58,18 @@ export function getSceneWorldEventApi() {
         source: context?.eventSource ?? null,
         types: context?.eventTypes ?? context?.event_types ?? null,
     };
+}
+
+export async function generateWithCurrentConnection(messages, { responseLength = 1800 } = {}) {
+    if (!Array.isArray(messages) || messages.length === 0) throw new Error('生成请求没有可用提示词');
+    const result = await generateRaw({
+        prompt: messages,
+        responseLength,
+        trimNames: false,
+    });
+    const text = String(result ?? '').trim();
+    if (!text) throw new Error('模型没有返回内容，请检查 SillyTavern 当前连接与模型设置');
+    return text;
 }
 
 export function notify(message, level = 'info') {

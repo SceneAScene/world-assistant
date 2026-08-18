@@ -1,14 +1,14 @@
 {
   "display_name": "世界动态",
-  "name": "sceneworld",
   "loading_order": 20,
   "requires": [],
   "optional": [],
   "js": "index.js",
+  "css": "",
   "author": "SceneAScene",
-  "version": "2.0.0-alpha.2",
+  "version": "2.0.0-alpha.4",
   "homePage": "https://github.com/SceneAScene/world-assistant",
-  "auto_update": false,
+  "auto_update": true,
   "hooks": {
     "activate": "onActivate",
     "disable": "onDisable",

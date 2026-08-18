@@ -14,6 +14,11 @@ import {
 export const SCENEWORLD_DATA_KEY = 'sceneworld';
 export const SCENEWORLD_OWNED_CHAT_KEYS = Object.freeze([SCENEWORLD_DATA_KEY]);
 
+function clone(value) {
+    if (typeof structuredClone === 'function') return structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
+}
+
 function estimateBytes(value) {
     try {
         return new Blob([JSON.stringify(value)]).size;
@@ -37,7 +42,7 @@ export function hasSceneWorldState() {
     return !!readRaw();
 }
 
-// Explicit write path only. This is intentionally never called during plugin activation or UI open.
+// Explicit write path. Never called on activation or UI open.
 export async function createSceneWorldState() {
     if (!hasActiveChat()) throw new Error('请先打开一个角色聊天或群聊');
     const metadata = getCurrentChatMetadata();
@@ -57,24 +62,35 @@ export async function createSceneWorldState() {
     }
 }
 
-export async function updateSceneWorldState(mutator) {
-    if (typeof mutator !== 'function') throw new TypeError('updateSceneWorldState requires a mutator');
+// Transactional replace. Used after a successful model response so failed generation never creates data.
+export async function commitSceneWorldState(nextState) {
+    if (!hasActiveChat()) throw new Error('请先打开一个角色聊天或群聊');
     const metadata = getCurrentChatMetadata();
     if (!metadata || typeof metadata !== 'object') throw new Error('当前聊天没有可用的 chatMetadata');
-    const current = readRaw();
-    if (!current) throw new Error('当前聊天尚未创建 sceneworld 数据');
+    const normalized = normalizeSceneWorldState(nextState);
+    if (!normalized) throw new Error('准备保存的 sceneworld 状态无效');
+    touchSceneWorldState(normalized);
 
-    const before = typeof structuredClone === 'function' ? structuredClone(current) : JSON.parse(JSON.stringify(current));
+    const hadPrevious = Object.prototype.hasOwnProperty.call(metadata, SCENEWORLD_DATA_KEY);
+    const previous = hadPrevious ? clone(metadata[SCENEWORLD_DATA_KEY]) : undefined;
+    metadata[SCENEWORLD_DATA_KEY] = normalized;
     try {
-        const result = mutator(current) ?? current;
-        touchSceneWorldState(result);
-        metadata[SCENEWORLD_DATA_KEY] = result;
         await saveCurrentChatMetadata();
-        return result;
+        return normalizeSceneWorldState(normalized);
     } catch (error) {
-        metadata[SCENEWORLD_DATA_KEY] = before;
+        if (hadPrevious) metadata[SCENEWORLD_DATA_KEY] = previous;
+        else delete metadata[SCENEWORLD_DATA_KEY];
         throw error;
     }
+}
+
+export async function updateSceneWorldState(mutator) {
+    if (typeof mutator !== 'function') throw new TypeError('updateSceneWorldState requires a mutator');
+    const current = readRaw();
+    if (!current) throw new Error('当前聊天尚未创建 sceneworld 数据');
+    const working = clone(current);
+    const result = mutator(working) ?? working;
+    return commitSceneWorldState(result);
 }
 
 export async function writeSceneWorldSection(section, value) {
@@ -104,21 +120,13 @@ export async function clearSceneWorldState() {
 
 export function sceneWorldUsage() {
     const state = readRaw();
-    if (!state) return {
-        exists: false,
-        totalBytes: 0,
-        sections: {},
-    };
+    if (!state) return { exists: false, totalBytes: 0, sections: {} };
 
     const sections = {};
-    for (const key of ['world', 'people', 'undercurrents', 'echoes', 'publicOpinion', 'memory', 'chronicle', 'assistant', 'snapshots']) {
+    for (const key of ['sync', 'world', 'people', 'undercurrents', 'echoes', 'publicOpinion', 'memory', 'chronicle', 'assistant', 'snapshots']) {
         sections[key] = estimateBytes(state[key]);
     }
-    return {
-        exists: true,
-        totalBytes: estimateBytes(state),
-        sections,
-    };
+    return { exists: true, totalBytes: estimateBytes(state), sections };
 }
 
 export function inspectSceneWorldStorage() {
