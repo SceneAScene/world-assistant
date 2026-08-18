@@ -1,14 +1,17 @@
 {
   "display_name": "世界动态",
+  "name": "sceneworld",
   "loading_order": 20,
   "requires": [],
   "optional": [],
-  "dependencies": [],
-  "js": "bootstrap.js",
-  "css": "style.css",
-  "author": "world-assistant",
-  "version": "1.0.2",
+  "js": "index.js",
+  "author": "SceneAScene",
+  "version": "2.0.0-alpha.1",
+  "homePage": "https://github.com/SceneAScene/world-assistant",
   "auto_update": false,
-  "minimum_client_version": "1.12.0",
-  "generate_interceptor": "worldDynamicGenerationInterceptor"
+  "hooks": {
+    "activate": "onActivate",
+    "disable": "onDisable",
+    "delete": "onDelete"
+  }
 }
