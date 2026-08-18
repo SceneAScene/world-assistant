@@ -112,6 +112,35 @@ export async function clearSceneWorldState() {
     }
 }
 
+export async function clearSceneWorldSection(section) {
+    const allowed = new Set(['people', 'observation', 'continuity', 'chronicle', 'guidance']);
+    if (!allowed.has(section)) throw new Error(`未知的 SceneWorld 清理分区：${section}`);
+    const current = readRaw();
+    if (!current) return false;
+    const empty = createEmptySceneWorldState();
+    await updateSceneWorldState(state => {
+        if (section === 'people') state.people = [];
+        else if (section === 'observation') {
+            state.publicOpinion = clone(empty.publicOpinion);
+            state.guidance = state.guidance && typeof state.guidance === 'object' ? state.guidance : clone(empty.guidance);
+            state.guidance.places = [];
+            state.guidance.placesUpdatedAt = null;
+        } else if (section === 'continuity') {
+            state.world = state.world && typeof state.world === 'object' ? state.world : clone(empty.world);
+            state.world.facts = [];
+            state.continuity = clone(empty.continuity);
+        } else if (section === 'chronicle') state.chronicle = [];
+        else if (section === 'guidance') {
+            state.guidance = state.guidance && typeof state.guidance === 'object' ? state.guidance : clone(empty.guidance);
+            state.guidance.actions = [];
+            state.guidance.actionsUpdatedAt = null;
+            state.guidance.actionsSourceMessageId = null;
+        }
+        return state;
+    });
+    return true;
+}
+
 export function sceneWorldUsage() {
     const state = readRaw();
     if (!state) return { exists: false, totalBytes: 0, sections: {} };

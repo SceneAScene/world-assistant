@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 14;
+export const SCENEWORLD_SCHEMA_VERSION = 15;
 
 function nowIso() {
     return new Date().toISOString();
@@ -146,6 +146,7 @@ function normalizeRecentDynamics(items) {
             sourceStartMessageId: Number.isInteger(item.sourceStartMessageId) ? item.sourceStartMessageId : null,
             sourceEndMessageId: Number.isInteger(item.sourceEndMessageId) ? item.sourceEndMessageId : null,
             createdAt: text(item.createdAt, 80) || null,
+            storyTime: text(item.storyTime ?? item.worldTime, 160) || null,
         };
     }).filter(Boolean).slice(-5);
 }
@@ -323,6 +324,7 @@ export function createEmptySceneWorldState() {
             lastProcessedAssistantRangeFingerprint: '',
             lastProcessedAssistantCharacters: 0,
             lastProcessedContentFilterSignature: '',
+            lastProcessedStoryTime: null,
         },
         world: {
             time: null,
@@ -399,6 +401,7 @@ export function normalizeSceneWorldState(value) {
                     ? Math.max(0, Math.trunc(legacy.lastProcessedAssistantCharacters))
                     : 0,
                 lastProcessedContentFilterSignature: text(legacy.lastProcessedContentFilterSignature, 300),
+                lastProcessedStoryTime: text(legacy.lastProcessedStoryTime ?? source.world?.time, 160) || null,
             };
         })(),
         world: {
@@ -428,6 +431,7 @@ export function normalizeSceneWorldState(value) {
                 details: details.slice(0, 24),
                 knowledge: normalizeKnowledge(person.knowledge),
                 lastUpdatedMessageId: Number.isInteger(person.lastUpdatedMessageId) ? person.lastUpdatedMessageId : null,
+                manualEditedAt: text(person.manualEditedAt, 80) || null,
             };
         }).filter(person => person?.name).slice(0, 180) : [],
         publicOpinion: {

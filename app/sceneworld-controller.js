@@ -1,12 +1,13 @@
 import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
-import { inspectSceneWorldStorage } from '../data/sceneworld-store.js';
+import { clearSceneWorldSection, inspectSceneWorldStorage } from '../data/sceneworld-store.js';
 import { getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { getCurrentWorldEntryChoices } from '../platform/world-reference.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
 import { favoriteOpinionItem, removeChronicleItem } from '../services/chronicle.js';
 import { editContinuityFact, removeContinuityFact } from '../services/continuity.js';
+import { removePerson, upsertManualPerson } from '../services/people.js';
 import { getBaiBaiBookStatus } from '../platform/baibai-book.js';
 import { createSceneWorldShell, removeSceneWorldShell } from '../ui/sceneworld-shell.js';
 
@@ -61,6 +62,9 @@ export function createSceneWorldController({ version }) {
                 getBaiBaiStatus: getBaiBaiBookStatus,
                 removeContinuityFact: id => tasks.run(`continuity-remove:${id}`, () => removeContinuityFact(id)),
                 editContinuityFact: (id, value) => tasks.run(`continuity-edit:${id}`, () => editContinuityFact(id, value)),
+                upsertPerson: person => tasks.run(`person-upsert:${person?.id || person?.name || 'new'}`, () => upsertManualPerson(person)),
+                removePerson: id => tasks.run(`person-remove:${id}`, () => removePerson(id)),
+                clearSection: section => tasks.run(`clear-section:${section}`, () => clearSceneWorldSection(section)),
                 isTaskRunning: key => tasks.isRunning(key),
             },
         });

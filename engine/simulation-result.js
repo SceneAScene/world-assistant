@@ -393,6 +393,7 @@ export function applySimulationPayload(baseState, payload, source) {
             sourceStartMessageId: Number.isInteger(source.startId) ? source.startId : source.id,
             sourceEndMessageId: source.id,
             createdAt: now,
+            storyTime: next.world?.time || null,
         });
         next.continuity.recentDynamics = recent.slice(-5);
     } else {
@@ -416,6 +417,7 @@ export function applySimulationPayload(baseState, payload, source) {
         lastProcessedAssistantRangeFingerprint: String(source.rangeFingerprint ?? ''),
         lastProcessedAssistantCharacters: Number.isFinite(source.characters) ? Math.max(0, Math.trunc(source.characters)) : 0,
         lastProcessedContentFilterSignature: String(source.contentFilterSignature ?? ''),
+        lastProcessedStoryTime: next.world?.time || null,
     };
     return next;
 }

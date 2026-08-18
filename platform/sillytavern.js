@@ -26,6 +26,8 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     simulationUseBaiBaiBook: false,
     observationUseBaiBaiBook: false,
     baibaiHistoryMaxChars: 8000,
+    // 界面字体微调：-1=较小，0=标准，1=舒适，2=较大。
+    uiFontAdjust: 1,
 });
 
 function normalizeContentTagName(value) {
@@ -128,6 +130,7 @@ export function getSceneWorldSettings() {
         simulationUseBaiBaiBook,
         observationUseBaiBaiBook,
         baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
+        uiFontAdjust: Math.max(-1, Math.min(2, Math.trunc(Number.isFinite(Number(merged.uiFontAdjust)) ? Number(merged.uiFontAdjust) : DEFAULT_SCENEWORLD_SETTINGS.uiFontAdjust))),
     };
 }
 
@@ -148,6 +151,7 @@ export function updateSceneWorldSettings(patch) {
         ['observationWorldInfoMaxChars', 2000, 32000],
         ['baibaiHistoryMaxChars', 2000, 20000],
         ['maxPendingAssistantMessages', 1, 10],
+        ['uiFontAdjust', -1, 2],
     ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }

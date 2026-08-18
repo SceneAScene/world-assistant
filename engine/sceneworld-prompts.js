@@ -15,6 +15,7 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 - “最近世界动态”只保留最近 5 次结算摘要，帮助理解世界最近如何变成当前状态；不要把它们重复当成本轮新变化。
 - “持续性世界事实”数量严格受限，只保留当前仍会约束后续世界一致性的事实。它不是完整历史档案。
 - 本轮待结算正文每次最多 10 条 AI 回复，必须整体理解，以区间末尾明确成立的状态为当前状态。
+- 剧情先后顺序首先以 AI 楼层顺序为准。若正文中出现明确的剧情日期/时间（包括正文内的时间标签或时间抬头），world_patch.time 应更新为区间末尾最新明确成立的剧情时间；若本轮没有新的明确时间，返回 null，不得自行补造日期。
 
 人物规则：
 - 不替用户角色决定未发生的行动、情绪、目标或认知。
@@ -100,7 +101,7 @@ export function buildManualSimulationMessages({ state, batch, worldReferenceText
     const userPrompt = `世界观参考（只作为设定约束，不代表当前事件已经发生）：\n${worldReferenceText || '（未提供）'}\n\n可选长期压缩历史（柏宝书）：\n${longTermHistoryText || '（未启用或当前无可用长期历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n\n请只返回下面结构的严格 JSON。所有字段都允许为空：\n{
   "simulation_digest": "本轮世界净变化的1～3句摘要；没有值得进入最近动态的变化则留空",
   "world_patch": {
-    "time": null,
+    "time": "正文中区间末尾最新明确剧情日期/时间；本轮没有新时间则 null",
     "location": "",
     "summary": ""
   },
