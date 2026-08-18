@@ -9,10 +9,13 @@ import { initializeWorldBackstage } from './index.js';
 
 function start() {
     try {
+        delete globalThis.__worldDynamicInitError;
         initializeWorldBackstage();
     } catch (error) {
-        console.error('[世界动态] 初始化失败', error);
-        globalThis.toastr?.error?.(`世界动态初始化失败：${error?.message || error}`);
+        const message = String(error?.message || error || '未知错误');
+        globalThis.__worldDynamicInitError = message;
+        console.error('[世界动态] 加载失败', error);
+        globalThis.toastr?.error?.(`世界动态加载失败：${message}`);
     }
 }
 

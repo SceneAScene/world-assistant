@@ -10,7 +10,9 @@ function openWorldBackstage() {
     try {
         globalThis.worldDynamicHost?.open?.();
         if (!globalThis.worldDynamicHost?.open) {
-            globalThis.toastr?.warning?.('世界动态仍在初始化，请稍后再试。');
+            const initError = String(globalThis.__worldDynamicInitError || '').trim();
+            if (initError) globalThis.toastr?.error?.(`世界动态加载失败：${initError}`);
+            else globalThis.toastr?.warning?.('世界动态尚未加载完成，请稍后再试。');
         }
     } catch (error) {
         console.error('[世界动态] 打开失败', error);

@@ -149,9 +149,9 @@ const hostDocument = hostWindow.document || globalThis.document;
 
 const PROMPT_KEY = 'world_dynamic_authoritative_state';
 const SUPPORT_PROMPT_KEY = 'world_dynamic_context_support';
-const PLUGIN_VERSION = '1.0.1';
+const PLUGIN_VERSION = '1.0.2';
 const DEFAULT_SETTINGS = Object.freeze({
-    settingsVersion: 30,
+    settingsVersion: 32,
     enabled: true,
     promptInjection: true,
     worldSimulationEnabled: true,
@@ -171,8 +171,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     socialInstantReply: true,
     memorySystemEnabled: true,
     memoryPromptInjection: true,
-    autoSync: true,
-    worldAutoEnabled: true,
+    autoSync: false,
+    worldAutoEnabled: false,
     autoSimulationMode: 'balanced',
     worldPulseActivity: 'natural',
     autoSimulationInterval: 1,
@@ -216,7 +216,7 @@ const DEFAULT_SETTINGS = Object.freeze({
         opinion: 'default',
     },
     publicOpinionRevealMode: 'observe',
-    publicOpinionAutoEnabled: true,
+    publicOpinionAutoEnabled: false,
     // 0 = automatic task budget. A positive value is a global upper cap.
     maxOutputTokens: 0,
     // 0 = module-aware automatic timeout. This counts active request time only.
@@ -235,6 +235,10 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 const runtime = {
     initialized: false,
+    initializing: false,
+    persistenceActivated: false,
+    transientSettings: null,
+    preparedChatToken: '',
     eventSubscriptions: [],
     ui: null,
     transientStore: null,
@@ -848,7 +852,9 @@ function getSettings() {
     const context = getContext();
     if (!context?.extensionSettings) return { ...DEFAULT_SETTINGS };
 
-    const previous = context.extensionSettings[MODULE_ID];
+    const persistedPrevious = context.extensionSettings[MODULE_ID];
+    const hasPersistedSettings = Boolean(persistedPrevious && typeof persistedPrevious === 'object');
+    const previous = hasPersistedSettings ? persistedPrevious : runtime.transientSettings;
     const previousSettingsVersion = Number(previous?.settingsVersion) || 0;
     const legacySimulationPaused = previousSettingsVersion < 11
         && Boolean(previous?.simulationPaused);
@@ -895,7 +901,9 @@ function getSettings() {
         ? (
             previous?.worldAutoEnabled !== undefined
                 ? Boolean(previous.worldAutoEnabled)
-                : previous?.autoSync !== false && previous?.autoSimulationMode !== 'manual'
+                : previous?.autoSync !== undefined
+                    ? previous.autoSync !== false && previous?.autoSimulationMode !== 'manual'
+                    : false
         )
         : settings.worldAutoEnabled !== false;
     settings.recordPlayerCharacter = previousSettingsVersion < 25
@@ -989,7 +997,14 @@ function getSettings() {
     if (previousSettingsVersion < 15) {
         settings.timePolicy = 'world';
     }
-    settings.settingsVersion = 31;
+    // World Dynamic 1.0.2 starts in manual mode. Loading the extension must never
+    // start model work by itself; the user explicitly enables automation later.
+    if (previousSettingsVersion < 32) {
+        settings.worldAutoEnabled = false;
+        settings.autoSync = false;
+        settings.publicOpinionAutoEnabled = false;
+    }
+    settings.settingsVersion = 32;
     if (!['world', 'explicit', 'cautious', 'open'].includes(settings.timePolicy)) {
         settings.timePolicy = 'world';
     }
@@ -1038,12 +1053,46 @@ function getSettings() {
     settings.orbEnabled = false;
     settings.orbEdgeHide = false;
     settings.orbPosition = null;
+    if (!runtime.persistenceActivated && !hasPersistedSettings) {
+        runtime.transientSettings = settings;
+        return settings;
+    }
     context.extensionSettings[MODULE_ID] = settings;
-    if (previousSettingsVersion < 31) context.saveSettingsDebounced?.();
+    runtime.transientSettings = null;
+    if (previousSettingsVersion < 32) context.saveSettingsDebounced?.();
     return settings;
 }
 
+function activatePersistentData() {
+    if (runtime.persistenceActivated) return;
+    runtime.persistenceActivated = true;
+    const context = getContext();
+    if (!context) return;
+
+    if (context.extensionSettings && !context.extensionSettings[MODULE_ID] && runtime.transientSettings) {
+        context.extensionSettings[MODULE_ID] = runtime.transientSettings;
+        runtime.transientSettings = null;
+        context.saveSettingsDebounced?.();
+    }
+    if (context.chatMetadata && hasChatContext() && !context.chatMetadata[STATE_KEY] && runtime.transientStore) {
+        context.chatMetadata[STATE_KEY] = runtime.transientStore;
+        runtime.transientStore = null;
+        context.saveMetadataDebounced?.();
+    }
+}
+
+function prepareUserSession() {
+    activatePersistentData();
+    const token = currentChatToken();
+    if (runtime.preparedChatToken === token) return;
+    restoreLatestBranch();
+    runtime.preparedChatToken = token;
+    if (compactBranchSnapshotStorage()) void getContext()?.saveChat?.();
+    schedulePendingCatchUp();
+}
+
 function saveSettings() {
+    activatePersistentData();
     const context = getContext();
     context?.saveSettingsDebounced?.();
 }
@@ -1549,7 +1598,7 @@ function prepareStore(rawStore, context = getContext()) {
     store.recoveryPoints = Array.isArray(store.recoveryPoints) ? store.recoveryPoints.slice(-3) : [];
 
     runtime.preparedStores.add(store);
-    if ((createdMigrationRecovery || migratedLegacyPlayerIdentity) && context?.chatMetadata && hasChatContext()) {
+    if (runtime.persistenceActivated && (createdMigrationRecovery || migratedLegacyPlayerIdentity) && context?.chatMetadata && hasChatContext()) {
         context.chatMetadata[STATE_KEY] = store;
         context.saveMetadataDebounced?.();
     }
@@ -1566,8 +1615,15 @@ function getStore({ create = true } = {}) {
         return runtime.transientStore;
     }
 
+    if (!metadata[STATE_KEY] && !runtime.persistenceActivated) {
+        runtime.transientStore ||= makeStore();
+        runtime.transientStore = prepareStore(runtime.transientStore, context);
+        return runtime.transientStore;
+    }
+
     if (!metadata[STATE_KEY] && create) {
-        metadata[STATE_KEY] = makeStore();
+        metadata[STATE_KEY] = runtime.transientStore || makeStore();
+        runtime.transientStore = null;
         context.saveMetadataDebounced?.();
     }
 
@@ -5436,6 +5492,14 @@ function onMessageDeleted(messageId) {
 }
 
 function onChatChanged() {
+    if (!runtime.persistenceActivated) {
+        runtime.transientStore = null;
+        runtime.preparedChatToken = '';
+        runtime.activeChatToken = currentChatToken();
+        runtime.ui?.resetContext?.();
+        runtime.ui?.render?.();
+        return;
+    }
     invalidateAsyncWorldContext();
     runtime.activePublicOpinion?.controller?.abort?.();
     runtime.activePublicOpinionSandbox?.controller?.abort?.();
@@ -5479,6 +5543,7 @@ function onChatChanged() {
     runtime.manualUndo = null;
     runtime.editDecision = null;
     runtime.activeChatToken = currentChatToken();
+    runtime.preparedChatToken = '';
     runtime.historyProgress = {
         phase: 'idle',
         processed: 0,
@@ -5506,6 +5571,7 @@ function onChatChanged() {
     window.setTimeout(() => {
         runtime.activeChatToken = currentChatToken();
         restoreLatestBranch();
+        runtime.preparedChatToken = currentChatToken();
         syncSettingsEntry();
         if (compactBranchSnapshotStorage()) void getContext()?.saveChat?.();
         schedulePendingCatchUp();
@@ -10312,6 +10378,7 @@ async function refreshSocialMoments() {
 }
 
 async function handleUiAction(action, payload = {}) {
+    activatePersistentData();
     if (action === 'test-image-api' || String(action || '').startsWith('social-')) {
         throw new Error('当前版本已移除“通讯”社交系统。');
     }
@@ -11407,9 +11474,11 @@ function installSettingsEntry() {
     host.appendChild(entry);
 
     entry.querySelector('#world-dynamic-enabled')?.addEventListener('change', event => {
+        activatePersistentData();
         void handleUiAction('update-settings', { enabled: event.target.checked });
     });
     entry.querySelector('#world-dynamic-open')?.addEventListener('click', () => {
+        prepareUserSession();
         const settings = getSettings();
         if (!settings.enabled) {
             void handleUiAction('update-settings', { enabled: true });
@@ -11441,11 +11510,15 @@ function registerEvents() {
     const events = context?.eventTypes || context?.event_types;
     if (!source || !events) return;
 
-    const on = (eventName, handler) => {
+    const on = (eventName, handler, { allowDormant = false } = {}) => {
         const event = events[eventName];
         if (!event) return;
-        source.on(event, handler);
-        runtime.eventSubscriptions.push({ source, event, handler });
+        const guardedHandler = (...args) => {
+            if (!runtime.persistenceActivated && !allowDormant) return;
+            return handler(...args);
+        };
+        source.on(event, guardedHandler);
+        runtime.eventSubscriptions.push({ source, event, handler: guardedHandler });
     };
 
     on('GENERATION_STARTED', onGenerationStarted);
@@ -11453,8 +11526,8 @@ function registerEvents() {
     on('MESSAGE_SWIPED', restoreExistingSwipe);
     on('MESSAGE_EDITED', onMessageEdited);
     on('MESSAGE_DELETED', onMessageDeleted);
-    on('CHAT_CHANGED', onChatChanged);
-    on('CHAT_LOADED', onChatChanged);
+    on('CHAT_CHANGED', onChatChanged, { allowDormant: true });
+    on('CHAT_LOADED', onChatChanged, { allowDormant: true });
 }
 
 function registerDebugCheck() {
@@ -11481,29 +11554,27 @@ function registerDebugCheck() {
 }
 
 export function initializeWorldBackstage() {
-    if (runtime.initialized || globalThis.__worldDynamicLoaded) return;
-    runtime.initialized = true;
-    globalThis.__worldDynamicLoaded = true;
+    if (runtime.initialized || runtime.initializing || globalThis.__worldDynamicLoaded) return;
+    runtime.initializing = true;
     runtime.activeChatToken = currentChatToken();
 
-    getSettings();
-    getStore();
-    runtime.ui = createWorldBackstageUI({
-        getState,
-        getSettings,
-        getSyncStatus,
-        getTavernProfiles: listTavernConnectionProfiles,
-        onAction: handleUiAction,
-        pluginVersion: PLUGIN_VERSION,
-    });
+    try {
+        getSettings();
+        getStore();
+        runtime.ui = createWorldBackstageUI({
+            getState,
+            getSettings,
+            getSyncStatus,
+            getTavernProfiles: listTavernConnectionProfiles,
+            onAction: handleUiAction,
+            pluginVersion: PLUGIN_VERSION,
+        });
 
-    // Additive bridge for the companion phone. The world engine and its UI stay
-    // identical to the GitHub baseline; this surface only exposes existing state
-    // and actions so the phone does not need a second copy of the world.
-    hostWindow.worldDynamicHost = {
+        // Host bridge is published only after the UI has been created successfully.
+        hostWindow.worldDynamicHost = {
         version: PLUGIN_VERSION,
         integratedLauncher: true,
-        open: options => runtime.ui?.open?.(options),
+        open: options => { prepareUserSession(); return runtime.ui?.open?.(options); },
         openEvent: eventId => runtime.ui?.openEvent?.(eventId),
         close: () => runtime.ui?.close?.(),
         getAssistantConversation: () => normalizeLingqiState(getStore().lingqi || emptyLingqiState()).messages.map(message => ({ ...message })),
@@ -11537,14 +11608,28 @@ export function initializeWorldBackstage() {
         clearPublicOpinionSandbox: () => handleUiAction('clear-public-opinion-sandbox', {}),
         dismissPublicOpinionItem: (kind, itemId) => handleUiAction('dismiss-public-opinion-item', { kind, itemId }),
         updatePublicOpinionSettings: patch => handleUiAction('update-settings', patch && typeof patch === 'object' ? patch : {}),
-    };
-    hostWindow.dispatchEvent(new hostWindow.CustomEvent('world-dynamic:ready', { detail: { version: PLUGIN_VERSION } }));
-
-    installSettingsEntry();
-    registerEvents();
-    registerDebugCheck();
-    restoreLatestBranch();
-    console.info('[世界动态] 世界状态引擎已加载');
+        };
+        installSettingsEntry();
+        registerEvents();
+        registerDebugCheck();
+        runtime.initialized = true;
+        globalThis.__worldDynamicLoaded = true;
+        hostWindow.dispatchEvent(new hostWindow.CustomEvent('world-dynamic:ready', { detail: { version: PLUGIN_VERSION } }));
+        console.info('[世界动态] 世界状态引擎已加载');
+    } catch (error) {
+        unregisterEvents();
+        try { runtime.ui?.destroy?.(); } catch {}
+        runtime.ui = null;
+        runtime.initialized = false;
+    runtime.initializing = false;
+    runtime.persistenceActivated = false;
+    runtime.transientSettings = null;
+        try { delete globalThis.__worldDynamicLoaded; } catch { globalThis.__worldDynamicLoaded = false; }
+        try { delete hostWindow.worldDynamicHost; } catch {}
+        throw error;
+    } finally {
+        runtime.initializing = false;
+    }
 }
 
 
@@ -11563,6 +11648,11 @@ export function destroyWorldBackstage() {
     try { runtime.ui?.destroy?.(); } catch {}
     runtime.ui = null;
     runtime.initialized = false;
+    runtime.initializing = false;
+    runtime.persistenceActivated = false;
+    runtime.transientSettings = null;
+    runtime.transientStore = null;
+    runtime.preparedChatToken = '';
     try { delete globalThis.__worldDynamicLoaded; } catch { globalThis.__worldDynamicLoaded = false; }
     try { hostDocument.getElementById('world-dynamic-settings-entry')?.remove?.(); } catch {}
     try { delete hostWindow.worldDynamicHost; } catch {}
