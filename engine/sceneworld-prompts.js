@@ -23,7 +23,8 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 - 世界事实只保存确定成立、会约束后续一致性的内容；传闻、猜测、角色误解不能升级成事实。
 - 每条世界事实都要判断公开性：private=社会不可见；trace=外界只能看到迹象但不知道真相；public=已经成为公开事实。没有明确公开依据时一律使用 private。
 - 世界线记忆只保存“如果以后忘记会导致明显世界线矛盾”的少量信息，不要把每轮剧情摘要都塞进去。
-- 本次核心推演不生成新闻、论坛、随便逛逛、暗流、回声、伏笔或纪事收藏；这些是独立功能。
+- 本次核心推演不生成新闻、论坛、市井闲闻、去哪逛逛、暗流、回声、伏笔或纪事收藏；这些是独立功能。
+- 但可以顺手生成 3～5 条“行动建议”，因为本次调用已经拥有待结算 AI 正文、人物和世界状态。行动建议只给用户下一轮写作参考，不属于世界事实，不得进入人物认知或世界线记忆。
 - 输出必须是严格 JSON 对象，不要 Markdown、代码围栏或解释。`;
 
 function compactKnowledge(items) {
@@ -128,6 +129,14 @@ export function buildManualSimulationMessages({ state, batch }) {
       "reason": "为什么需要长期保留",
       "evidence": "支持它的待结算正文短证据"
     }
+  ],
+  "action_suggestions": [
+    {
+      "title": "简短行动选项名",
+      "reason": "为什么这个方向适合承接当前剧情",
+      "tone": "日常|关系|探索|调查|工作|休息|其他",
+      "prompt": "可直接填入 SillyTavern 输入框的剧情大纲/引子"
+    }
   ]
 }\n\n特别注意：
 - 本轮只结算 #${batch.startId}～#${batch.endId} 之间实际存在的 AI 回复；中间 USER 楼层完全不作为输入。
@@ -136,7 +145,8 @@ export function buildManualSimulationMessages({ state, batch }) {
 - 单人恋爱、慢节奏对话完全可以只更新一个人物字段，甚至全部为空。
 - 不要为了显示“大环境”而制造大环境；正文没有重大社会变化就不要生成。
 - 不要输出“暂无重大舆情”之类内容，本次根本不负责舆情。
-- 已有对象没有变化时不要重复输出。`;
+- 已有对象没有变化时不要重复输出。
+- action_suggestions 应生成 3～5 条，尽量覆盖不同方向；不得重复、不得泄露 private 真相、不得把建议当成已发生事实。`;
 
     return [
         { role: 'system', content: SYSTEM_PROMPT },

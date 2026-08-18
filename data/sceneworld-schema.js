@@ -1,4 +1,4 @@
-export const SCENEWORLD_SCHEMA_VERSION = 7;
+export const SCENEWORLD_SCHEMA_VERSION = 9;
 
 function nowIso() {
     return new Date().toISOString();
@@ -153,34 +153,65 @@ function normalizeOpinionForum(items) {
     }).filter(Boolean).slice(0, 16);
 }
 
-function normalizeCasualItems(items) {
+function normalizeStreetItems(items) {
     if (!Array.isArray(items)) return [];
+    const allowedKinds = new Set(['overheard', 'gossip', 'curiosity', 'local_incident', 'notice', 'slice']);
     return items.map(item => {
         if (!item || typeof item !== 'object') return null;
-        const kind = text(item.kind, 30) || 'snippet';
-        const title = text(item.title ?? item.headline, 180);
-        const summary = text(item.summary ?? item.text, 900);
-        if (!title || !summary) return null;
-        const replies = Array.isArray(item.replies) ? item.replies.map(reply => {
-            if (!reply || typeof reply !== 'object') return null;
-            const body = text(reply.text ?? reply.content, 500);
-            if (!body) return null;
-            return { author: text(reply.author ?? reply.name, 80) || '匿名', text: body };
-        }).filter(Boolean).slice(0, 6) : [];
+        const kindRaw = text(item.kind, 30).toLowerCase();
+        const kind = allowedKinds.has(kindRaw) ? kindRaw : 'slice';
+        const title = text(item.title ?? item.headline ?? item.category, 180);
+        const body = text(item.text ?? item.quote ?? item.summary, 900);
+        if (!title || !body) return null;
         return {
             id: text(item.id, 140),
             kind,
-            category: text(item.category, 60),
+            category: text(item.category, 60) || '市井闲闻',
             title,
-            summary,
-            source: text(item.source, 120),
-            board: text(item.board, 80),
-            replies,
+            text: body,
+            speaker: text(item.speaker ?? item.author, 100),
+            place: text(item.place ?? item.location, 140),
+            note: text(item.note ?? item.context ?? item.summary, 700),
             generatedAt: text(item.generatedAt, 80) || null,
             canon: false,
             nonCanon: true,
         };
     }).filter(Boolean).slice(0, 18);
+}
+
+function normalizeGuidanceActions(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const title = text(item.title, 140);
+        const prompt = text(item.prompt ?? item.text, 700);
+        if (!title || !prompt) return null;
+        return {
+            id: text(item.id, 140),
+            title,
+            prompt,
+            reason: text(item.reason, 500),
+            tone: text(item.tone, 60),
+        };
+    }).filter(Boolean).slice(0, 5);
+}
+
+function normalizeGuidancePlaces(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const name = text(item.name ?? item.title, 160);
+        const prompt = text(item.prompt ?? item.text, 700);
+        if (!name || !prompt) return null;
+        return {
+            id: text(item.id, 140),
+            name,
+            type: text(item.type, 80),
+            why: text(item.why ?? item.reason, 500),
+            prompt,
+            established: item.established === true,
+        };
+    }).filter(Boolean).slice(0, 5);
 }
 
 function normalizeChronicle(items) {
@@ -232,13 +263,20 @@ export function createEmptySceneWorldState() {
             sourceFingerprint: '',
             news: [],
             forum: [],
-            casualUpdatedAt: null,
-            casual: [],
+            streetUpdatedAt: null,
+            street: [],
         },
         memory: {
             worldline: [],
         },
         chronicle: [],
+        guidance: {
+            actionsUpdatedAt: null,
+            actionsSourceMessageId: null,
+            placesUpdatedAt: null,
+            actions: [],
+            places: [],
+        },
         assistant: {
             history: [],
             guidance: [],
@@ -319,8 +357,21 @@ export function normalizeSceneWorldState(value) {
             sourceFingerprint: text(opinion.sourceFingerprint, 200),
             news: normalizeOpinionNews(opinion.news),
             forum: normalizeOpinionForum(Array.isArray(opinion.forum) ? opinion.forum : legacyOpinion),
-            casualUpdatedAt: opinion.casualUpdatedAt ?? null,
-            casual: normalizeCasualItems(opinion.casual),
+            streetUpdatedAt: opinion.streetUpdatedAt ?? opinion.casualUpdatedAt ?? null,
+            street: normalizeStreetItems(
+                Array.isArray(opinion.street)
+                    ? opinion.street
+                    : (Array.isArray(opinion.casual)
+                        ? opinion.casual.map(item => ({
+                            ...item,
+                            kind: item?.kind === 'forum' ? 'overheard' : 'slice',
+                            text: item?.summary ?? item?.text,
+                            speaker: item?.speaker ?? '',
+                            place: item?.place ?? '',
+                            note: item?.summary ?? '',
+                        }))
+                        : [])
+            ),
         },
         memory: {
             worldline: normalizeWorldlineMemory(
@@ -328,6 +379,16 @@ export function normalizeSceneWorldState(value) {
             ),
         },
         chronicle: normalizeChronicle(source.chronicle),
+        guidance: (() => {
+            const raw = source.guidance && typeof source.guidance === 'object' ? source.guidance : {};
+            return {
+                actionsUpdatedAt: raw.actionsUpdatedAt ?? raw.updatedAt ?? null,
+                actionsSourceMessageId: Number.isInteger(raw.actionsSourceMessageId) ? raw.actionsSourceMessageId : null,
+                placesUpdatedAt: raw.placesUpdatedAt ?? raw.updatedAt ?? null,
+                actions: normalizeGuidanceActions(raw.actions),
+                places: normalizeGuidancePlaces(raw.places),
+            };
+        })(),
         assistant: {
             ...empty.assistant,
             ...(source.assistant && typeof source.assistant === 'object' ? source.assistant : {}),

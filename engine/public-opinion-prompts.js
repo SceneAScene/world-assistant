@@ -10,7 +10,7 @@ export function eligiblePublicOpinionSources(state) {
         .slice(0, 28)
         .map(item => ({
             id: cleanText(item.id, 120),
-            key: cleanText(item.key, 180),
+            key: item.publicity === 'public' ? cleanText(item.key, 180) : '',
             value: item.publicity === 'public' ? cleanText(item.value, 900) : '',
             validity: cleanText(item.validity, 40) || 'current',
             publicity: item.publicity,
@@ -86,30 +86,53 @@ ${JSON.stringify(sources, null, 2)}
     return [{ role: 'system', content: system }, { role: 'user', content: prompt }];
 }
 
-export function buildCasualPublicOpinionMessages(state) {
+export function buildStreetPublicOpinionMessages(state) {
     const context = {
         time: cleanText(state?.world?.time, 120),
         location: cleanText(state?.world?.location, 240),
         worldToneHint: cleanText(state?.world?.summary, 700),
     };
-    const system = `你是 SceneWorld（世界动态）的“随便逛逛”生成器。这是纯娱乐、NON-CANON 沙盒，用来制造这个世界里普通人生活的质感。
+    const system = `你是 SceneWorld（世界动态）的“街巷漫游”生成器。一次调用同时生成两类内容：A. NON-CANON 市井闲闻；B. 去哪逛逛地点建议。它们用于帮助用户观察和探索世界，不是论坛，也不修改世界事实。
 
 规则：
-- 生成日常轻新闻、闲聊、水帖、小广告、生活八卦、奇怪热帖、无关主线的小消息。
-- 所有内容都不是世界事实，不写入人物认知、世界线记忆或正文因果。
-- 只能借 context 判断语言气质、时代感和生活环境；不得续写主线，不得使用角色私事、隐藏秘密或把当前剧情事件换皮重写。
-- 现代/古风/中世纪/科幻等都自然适配世界语境，不要硬套现代互联网词汇。
-- 内容应以小事、琐事、普通生活为主，不要每条都制造灾难、阴谋或大事件。
-- 只输出严格 JSON。`;
+1. 只生成“街上、邻里、商铺、茶馆、酒馆、市集、社区、路边”等生活空间里可能碰到的小消息。
+2. 内容类型应混合：路人耳语、小道消息、市井闲谈、生活琐事、本地趣闻、偶发小事件、告示/招贴、无伤大雅的怪事。
+3. 重点写成“一个人当面说的一句话 / 路过听见的一句抱怨 / 一个简短现场见闻”，不要写成帖子 + 多层评论，不要模拟论坛楼层。
+4. 例如：隔壁王大爷抱怨楼上太吵；路边小贩讲东街某户最近动静很大；有人路过被偷了钱包；某家铺子突然改了营业时间。
+5. 所有内容都是 NON-CANON 灵感，不写入世界事实、人物认知、世界线记忆，也不能当成已经发生的主线。
+6. 只能借 context 判断时代感、语言气质和生活环境；不得泄露角色私事、隐藏秘密、private/trace 真相，也不得把当前主线换皮重写。
+7. 现代、古风、中世纪、科幻等自然适配语境，不要硬套现代互联网词汇。
+8. 内容以小事、琐事和生活质感为主，允许偶尔出现治安、物价、天气等地方性消息，但不要每条都升级成大事件。
+9. 去哪逛逛必须给 3～5 个地点建议；优先已有或自然可达地点，也可给符合世界语境的普通场所灵感，但灵感地点必须 established=false。
+10. 地点 prompt 要写成可直接填入 SillyTavern 输入框的简短剧情引子，不得宣称结果已经发生。
+11. 只输出严格 JSON。`;
     const prompt = `环境提示：
 ${JSON.stringify(context, null, 2)}
 
 请返回：
 {
-  "news": [{"category":"生活/本地/趣闻/商业/其他","headline":"","summary":"","source":""}],
-  "forums": [{"board":"","title":"","summary":"","replies":[{"author":"","text":""}]}]
+  "street": [
+    {
+      "kind": "overheard|gossip|curiosity|local_incident|notice|slice",
+      "category": "市井闲谈/小道消息/本地趣闻/生活琐事/偶发事件/告示",
+      "speaker": "可为空，例如隔壁王大爷/路边小贩/巡夜人/酒馆老板",
+      "place": "可为空，例如楼下/东街/市集/酒馆",
+      "title": "一句短标题",
+      "text": "核心内容；有说话人时优先写成一句自然口语，没有说话人时写成简短现场见闻",
+      "note": "可选，最多一两句背景补充；不要写评论串"
+    }
+  ],
+  "places": [
+    {
+      "name": "地点名或地点类型",
+      "type": "与当前世界语境相符的地点类型",
+      "why": "为什么值得去",
+      "established": true,
+      "prompt": "可直接填入 SillyTavern 输入框的探索引子"
+    }
+  ]
 }
 
-请生成 1～2 条轻新闻和 2～4 个闲聊主题，每个主题最多 4 条代表回复。`;
+市井闲闻生成 3～7 条；places 必须生成 3～5 条。类型尽量有差异。不要返回 replies/forums/news。`;
     return [{ role: 'system', content: system }, { role: 'user', content: prompt }];
 }

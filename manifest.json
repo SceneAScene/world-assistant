@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "",
   "author": "SceneAScene",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.9",
   "homePage": "https://github.com/SceneAScene/world-assistant",
   "auto_update": true,
   "hooks": {

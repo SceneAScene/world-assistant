@@ -81,3 +81,26 @@ export function notify(message, level = 'info') {
     const fn = level === 'error' ? console.error : level === 'warning' ? console.warn : console.info;
     fn(`[SceneWorld] ${message}`);
 }
+
+export function putTextIntoChatInput(text) {
+    const value = String(text ?? '').trim();
+    if (!value) throw new Error('没有可写入酒馆输入框的文本');
+    const target = document.querySelector('#send_textarea')
+        || document.querySelector('textarea[name="send_textarea"]')
+        || document.querySelector('textarea');
+    if (!target || !(target instanceof HTMLTextAreaElement)) {
+        throw new Error('没有找到 SillyTavern 聊天输入框');
+    }
+    const existing = String(target.value ?? '').trim();
+    if (existing && existing !== value && !confirm('SillyTavern 输入框里已经有内容。要用这条建议替换现有内容吗？')) {
+        return false;
+    }
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    if (setter) setter.call(target, value);
+    else target.value = value;
+    target.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    target.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    target.focus();
+    try { target.setSelectionRange(value.length, value.length); } catch { /* ignore */ }
+    return true;
+}

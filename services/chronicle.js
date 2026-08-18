@@ -11,9 +11,11 @@ function sourceByType(state, sourceType, sourceId) {
         ? opinion.news
         : sourceType === 'forum'
             ? opinion.forum
-            : sourceType === 'casual'
-                ? opinion.casual
-                : [];
+            : sourceType === 'street'
+                ? opinion.street
+                : sourceType === 'casual'
+                    ? opinion.casual
+                    : [];
     return Array.isArray(list) ? list.find(item => String(item?.id || '') === String(sourceId || '')) : null;
 }
 
@@ -28,9 +30,9 @@ export async function favoriteOpinionItem(sourceType, sourceId) {
     if (!source) throw new Error('要收藏的舆情内容已经不存在，请刷新界面后重试');
     if (isOpinionFavorited(state, sourceType, sourceId)) return state;
 
-    const title = source.headline || source.title || '收藏内容';
-    const summary = source.summary || source.text || '';
-    const sourceLabel = sourceType === 'news' ? '新闻' : sourceType === 'forum' ? '论坛' : '随便逛逛';
+    const title = source.headline || source.title || source.category || '收藏内容';
+    const summary = source.summary || source.text || source.note || '';
+    const sourceLabel = sourceType === 'news' ? '新闻' : sourceType === 'forum' ? '论坛' : sourceType === 'street' ? '市井闲闻' : '随便逛逛';
     return updateSceneWorldState(next => {
         const chronicle = Array.isArray(next.chronicle) ? next.chronicle : [];
         chronicle.push({
@@ -40,7 +42,7 @@ export async function favoriteOpinionItem(sourceType, sourceId) {
             sourceType,
             sourceId,
             sourceLabel,
-            canon: sourceType !== 'casual' && source.canon !== false,
+            canon: !['casual', 'street'].includes(sourceType) && source.canon !== false,
             capturedAt: new Date().toISOString(),
             sourceGeneratedAt: source.generatedAt || null,
         });

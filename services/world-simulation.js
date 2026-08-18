@@ -41,7 +41,7 @@ export async function simulatePendingNarrative(expectedBatch = null) {
 
     const base = persisted ?? createEmptySceneWorldState();
     const messages = buildManualSimulationMessages({ state: base, batch });
-    const raw = await generateWithCurrentConnection(messages, { responseLength: 1800 });
+    const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
     const payload = parseSimulationResponse(raw);
     const changeSummary = summarizeSimulationPayload(payload);
     const source = batchSource(batch);

@@ -217,6 +217,21 @@ function mergeWorldlineMemory(previous, incoming, maxItems = 120) {
     return [...map.values()].slice(-maxItems);
 }
 
+function normalizeActionSuggestions(value, source) {
+    return objectArray(value, item => {
+        const title = meaningfulText(item.title, 140);
+        const prompt = meaningfulText(item.prompt ?? item.text, 700);
+        if (!title || !prompt) return null;
+        return {
+            id: slug(`${source.id}|action|${title}|${prompt}`, 'action'),
+            title,
+            prompt,
+            reason: meaningfulText(item.reason, 500),
+            tone: meaningfulText(item.tone, 60),
+        };
+    }, 5);
+}
+
 export function summarizeSimulationPayload(payload) {
     const patch = payload?.world_patch && typeof payload.world_patch === 'object' && !Array.isArray(payload.world_patch)
         ? payload.world_patch : {};
@@ -227,6 +242,7 @@ export function summarizeSimulationPayload(payload) {
         facts: Array.isArray(payload?.world_facts_upsert) ? payload.world_facts_upsert.length : 0,
         people: Array.isArray(payload?.people_upsert) ? payload.people_upsert.length : 0,
         memory: Array.isArray(payload?.worldline_memory_add) ? payload.worldline_memory_add.length : 0,
+        actions: Array.isArray(payload?.action_suggestions) ? Math.min(payload.action_suggestions.length, 5) : 0,
     };
 }
 
@@ -266,6 +282,13 @@ export function applySimulationPayload(baseState, payload, source) {
     next.memory = next.memory && typeof next.memory === 'object' ? next.memory : { worldline: [] };
     const incomingMemory = objectArray(payload.worldline_memory_add, item => normalizeWorldlineMemory(item, source), 24);
     next.memory.worldline = mergeWorldlineMemory(next.memory.worldline, incomingMemory, 120);
+
+    next.guidance = next.guidance && typeof next.guidance === 'object' ? next.guidance : { actions: [], places: [] };
+    next.guidance.actions = normalizeActionSuggestions(payload.action_suggestions, source);
+    next.guidance.actionsUpdatedAt = new Date().toISOString();
+    next.guidance.actionsSourceMessageId = source.id;
+    next.guidance.places = Array.isArray(next.guidance.places) ? next.guidance.places : [];
+    next.guidance.placesUpdatedAt = next.guidance.placesUpdatedAt ?? null;
 
     next.sync = {
         ...(next.sync && typeof next.sync === 'object' ? next.sync : {}),

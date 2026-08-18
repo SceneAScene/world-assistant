@@ -41,8 +41,8 @@ function extractJsonText(raw) {
 export function parsePublicOpinionResponse(raw) {
     let payload;
     try { payload = JSON.parse(extractJsonText(raw)); }
-    catch (error) { throw new Error(`无法解析舆情 JSON：${error?.message || error}`); }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('舆情结果不是 JSON 对象');
+    catch (error) { throw new Error(`无法解析见闻 JSON：${error?.message || error}`); }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('见闻结果不是 JSON 对象');
     return payload;
 }
 
@@ -133,45 +133,47 @@ export function normalizeCanonicalOpinionPayload(payload, { sources, generatedAt
     return { news, forum };
 }
 
-export function normalizeCasualOpinionPayload(payload, { generatedAt = new Date().toISOString() } = {}) {
+export function normalizeStreetOpinionPayload(payload, { generatedAt = new Date().toISOString() } = {}) {
+    const allowedKinds = new Set(['overheard', 'gossip', 'curiosity', 'local_incident', 'notice', 'slice']);
     const items = [];
-    for (const [index, item] of (Array.isArray(payload?.news) ? payload.news : []).entries()) {
+    for (const [index, item] of (Array.isArray(payload?.street) ? payload.street : []).entries()) {
         if (!item || typeof item !== 'object') continue;
-        const title = cleanText(item.headline ?? item.title, 180);
-        const summary = cleanText(item.summary ?? item.text, 900);
-        if (!title || !summary) continue;
+        const title = cleanText(item.title ?? item.category, 180);
+        const text = cleanText(item.text ?? item.quote ?? item.summary, 900);
+        if (!title || !text) continue;
+        const kindRaw = cleanText(item.kind, 30).toLowerCase();
         items.push({
-            id: hash(`${generatedAt}|casual-news|${index}|${title}`, 'casual'),
-            kind: 'news',
-            category: cleanText(item.category, 60) || '日常',
+            id: hash(`${generatedAt}|street|${index}|${title}|${text}`, 'street'),
+            kind: allowedKinds.has(kindRaw) ? kindRaw : 'slice',
+            category: cleanText(item.category, 60) || '市井闲闻',
             title,
-            summary,
-            source: cleanText(item.source, 120) || '世界里的普通公开信息',
-            board: '',
-            replies: [],
-            generatedAt,
-            canon: false,
-            nonCanon: true,
-        });
-    }
-    for (const [index, item] of (Array.isArray(payload?.forums) ? payload.forums : []).entries()) {
-        if (!item || typeof item !== 'object') continue;
-        const title = cleanText(item.title, 180);
-        const summary = cleanText(item.summary ?? item.text, 900);
-        if (!title || !summary) continue;
-        items.push({
-            id: hash(`${generatedAt}|casual-forum|${index}|${title}`, 'casual'),
-            kind: 'forum',
-            category: '',
-            title,
-            summary,
-            source: '',
-            board: cleanText(item.board, 80) || '闲聊',
-            replies: normalizeReplies(item.replies),
+            text,
+            speaker: cleanText(item.speaker ?? item.author, 100),
+            place: cleanText(item.place ?? item.location, 140),
+            note: cleanText(item.note ?? item.context, 700),
             generatedAt,
             canon: false,
             nonCanon: true,
         });
     }
     return items.slice(0, 12);
+}
+
+export function normalizeStreetWanderPayload(payload, { generatedAt = new Date().toISOString() } = {}) {
+    const street = normalizeStreetOpinionPayload(payload, { generatedAt });
+    const places = (Array.isArray(payload?.places) ? payload.places : []).map((item, index) => {
+        if (!item || typeof item !== 'object') return null;
+        const name = cleanText(item.name ?? item.title, 160);
+        const prompt = cleanText(item.prompt ?? item.text, 700);
+        if (!name || !prompt) return null;
+        return {
+            id: hash(`${generatedAt}|place|${index}|${name}|${prompt}`, 'place'),
+            name,
+            type: cleanText(item.type, 80),
+            why: cleanText(item.why ?? item.reason, 500),
+            prompt,
+            established: item.established === true,
+        };
+    }).filter(Boolean).slice(0, 5);
+    return { street, places };
 }

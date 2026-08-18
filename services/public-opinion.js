@@ -1,13 +1,13 @@
 import { commitSceneWorldState, readSceneWorldState } from '../data/sceneworld-store.js';
 import {
     buildCanonicalPublicOpinionMessages,
-    buildCasualPublicOpinionMessages,
+    buildStreetPublicOpinionMessages,
     eligiblePublicOpinionSources,
     publicOpinionSourceFingerprint,
 } from '../engine/public-opinion-prompts.js';
 import {
     normalizeCanonicalOpinionPayload,
-    normalizeCasualOpinionPayload,
+    normalizeStreetWanderPayload,
     parsePublicOpinionResponse,
 } from '../engine/public-opinion-result.js';
 import { generateWithCurrentConnection } from '../platform/sillytavern.js';
@@ -21,6 +21,23 @@ function ensureState() {
     const state = readSceneWorldState();
     if (!state) throw new Error('当前聊天尚未建立 sceneworld 状态，请先完成至少一次世界推演');
     return state;
+}
+
+function knownLocationCorpus(state) {
+    return [
+        state?.world?.location,
+        ...(Array.isArray(state?.people) ? state.people.map(person => person?.location) : []),
+        ...(Array.isArray(state?.world?.moments) ? state.world.moments.flatMap(item => [item?.title, item?.text]) : []),
+        ...(Array.isArray(state?.world?.facts) ? state.world.facts.filter(item => item?.publicity === 'public').flatMap(item => [item?.key, item?.value]) : []),
+    ].map(value => String(value ?? '').trim()).filter(Boolean).join('\n');
+}
+
+function hardenPlaces(state, places) {
+    const corpus = knownLocationCorpus(state);
+    return (Array.isArray(places) ? places : []).map(place => ({
+        ...place,
+        established: Boolean(place?.established && place?.name && corpus.includes(String(place.name))),
+    })).slice(0, 5);
 }
 
 export function inspectPublicOpinion() {
@@ -50,8 +67,8 @@ export async function refreshCanonicalPublicOpinion() {
             sourceFingerprint,
             news: [],
             forum: [],
-            casualUpdatedAt: next.publicOpinion?.casualUpdatedAt ?? null,
-            casual: Array.isArray(next.publicOpinion?.casual) ? next.publicOpinion.casual : [],
+            streetUpdatedAt: next.publicOpinion?.streetUpdatedAt ?? null,
+            street: Array.isArray(next.publicOpinion?.street) ? next.publicOpinion.street : [],
         };
         const saved = await commitSceneWorldState(next);
         return { calledModel: false, state: saved, newsCount: 0, forumCount: 0, reason: 'no-public-sources' };
@@ -74,8 +91,8 @@ export async function refreshCanonicalPublicOpinion() {
         sourceFingerprint,
         news: normalized.news,
         forum: normalized.forum,
-        casualUpdatedAt: next.publicOpinion?.casualUpdatedAt ?? null,
-        casual: Array.isArray(next.publicOpinion?.casual) ? next.publicOpinion.casual : [],
+        streetUpdatedAt: next.publicOpinion?.streetUpdatedAt ?? null,
+        street: Array.isArray(next.publicOpinion?.street) ? next.publicOpinion.street : [],
     };
     const saved = await commitSceneWorldState(next);
     return {
@@ -88,17 +105,17 @@ export async function refreshCanonicalPublicOpinion() {
     };
 }
 
-export async function refreshCasualPublicOpinion() {
+export async function refreshStreetPublicOpinion() {
     const base = ensureState();
     const stateUpdatedAt = String(base.updatedAt || '');
     const generatedAt = new Date().toISOString();
-    const messages = buildCasualPublicOpinionMessages(base);
-    const raw = await generateWithCurrentConnection(messages, { responseLength: 1600 });
+    const messages = buildStreetPublicOpinionMessages(base);
+    const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
     const payload = parsePublicOpinionResponse(raw);
-    const casual = normalizeCasualOpinionPayload(payload, { generatedAt });
+    const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
 
     const latest = ensureState();
-    // Casual is non-canon, but do not save it into a different chat/state after a switch or reset.
+    // Street wander is non-canon, but do not save it into a different chat/state after a switch or reset.
     if (String(latest.createdAt || '') !== String(base.createdAt || '')) {
         throw new Error('生成“随便逛逛”期间当前 sceneworld 状态已切换，本次结果未保存');
     }
@@ -109,9 +126,15 @@ export async function refreshCasualPublicOpinion() {
         sourceFingerprint: next.publicOpinion?.sourceFingerprint ?? '',
         news: Array.isArray(next.publicOpinion?.news) ? next.publicOpinion.news : [],
         forum: Array.isArray(next.publicOpinion?.forum) ? next.publicOpinion.forum : [],
-        casualUpdatedAt: generatedAt,
-        casual,
+        streetUpdatedAt: generatedAt,
+        street: normalized.street,
     };
+    next.guidance = next.guidance && typeof next.guidance === 'object' ? next.guidance : { actions: [], places: [] };
+    next.guidance.placesUpdatedAt = generatedAt;
+    next.guidance.places = hardenPlaces(latest, normalized.places);
+    next.guidance.actions = Array.isArray(next.guidance.actions) ? next.guidance.actions : [];
+    next.guidance.actionsUpdatedAt = next.guidance.actionsUpdatedAt ?? null;
+    next.guidance.actionsSourceMessageId = Number.isInteger(next.guidance.actionsSourceMessageId) ? next.guidance.actionsSourceMessageId : null;
     const saved = await commitSceneWorldState(next);
-    return { calledModel: true, state: saved, raw, itemCount: casual.length, baseUpdatedAt: stateUpdatedAt };
+    return { calledModel: true, state: saved, raw, itemCount: normalized.street.length, placeCount: next.guidance.places.length, baseUpdatedAt: stateUpdatedAt };
 }
