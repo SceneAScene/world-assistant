@@ -1,7 +1,7 @@
 import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { clearSceneWorldSection, inspectSceneWorldStorage } from '../data/sceneworld-store.js';
-import { getChatInputText, getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { getCurrentWorldEntryChoices } from '../platform/world-reference.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
@@ -27,6 +27,9 @@ export function createSceneWorldController({ version }) {
         if (source && chatChanged) {
             events.onEmitter(source, chatChanged, () => shell?.onChatChanged?.());
         }
+
+        // 柏宝书可能晚于世界动态加载。监听其公开就绪事件，避免设置页永久停在“未检测到”。
+        events.listen(window, 'st-baibai-book:ready', () => shell?.onBaiBaiReady?.());
 
         publicApi = Object.freeze({
             version,
@@ -54,7 +57,12 @@ export function createSceneWorldController({ version }) {
                 refreshPublicOpinion: () => tasks.run('public-opinion', refreshCanonicalPublicOpinion),
                 refreshStreetOpinion: () => tasks.run('public-opinion-street', refreshStreetPublicOpinion),
                 putTextIntoChatInput,
-                getChatInputText,
+                getChatInputText: () => {
+                    const target = document.querySelector('#send_textarea')
+                        || document.querySelector('textarea[name="send_textarea"]')
+                        || document.querySelector('textarea');
+                    return String(target?.value ?? '');
+                },
                 getSettings: getSceneWorldSettings,
                 getWorldEntries: getCurrentWorldEntryChoices,
                 updateSettings: updateSceneWorldSettings,
