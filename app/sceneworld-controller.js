@@ -1,7 +1,7 @@
 import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { clearSceneWorldSection, inspectSceneWorldStorage } from '../data/sceneworld-store.js';
-import { getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { getChatInputText, getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { getCurrentWorldEntryChoices } from '../platform/world-reference.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
@@ -54,6 +54,7 @@ export function createSceneWorldController({ version }) {
                 refreshPublicOpinion: () => tasks.run('public-opinion', refreshCanonicalPublicOpinion),
                 refreshStreetOpinion: () => tasks.run('public-opinion-street', refreshStreetPublicOpinion),
                 putTextIntoChatInput,
+                getChatInputText,
                 getSettings: getSceneWorldSettings,
                 getWorldEntries: getCurrentWorldEntryChoices,
                 updateSettings: updateSceneWorldSettings,
