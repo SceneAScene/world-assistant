@@ -52,7 +52,7 @@ export function buildCanonicalPublicOpinionMessages(state, { worldReferenceText 
 8. 输出形式自然适配当前世界：现代可用媒体/论坛，古风可用邸报/告示/茶馆议论，中世纪可用城门消息/酒馆闲谈等。
 9. 只输出严格 JSON，不要 Markdown 或解释。`;
 
-    const prompt = `世界观参考（用于时代、地点、组织、社会习惯和论坛话题灵感；不是新闻事实来源）：\n${worldReferenceText || '（未提供）'}\n\nSceneWorld 已推演状态（当前世界 + 最近5次动态 + 持续性世界事实的可公开面）：\n${observationStateText || '（未提供）'}\n\n可选柏宝书长期历史（只用于理解较早背景和世界氛围，不能直接视为当前公开消息）：\n${longTermHistoryText || '（未启用或无可用历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前世界时间：${cleanText(state?.world?.time, 120) || '未明确'}
+    const prompt = `世界观参考（用于时代、地点、组织、社会习惯和论坛话题灵感；不是新闻事实来源）：\n${worldReferenceText || '（未提供）'}\n\nSceneWorld 已推演状态（当前世界 + 最近5次动态 + 持续性世界事实的可公开面）：\n${observationStateText || '（未提供）'}\n\n可选记忆插件长期历史（只用于理解较早背景和世界氛围，不能直接视为当前公开消息）：\n${longTermHistoryText || '（未启用或无可用历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前世界时间：${cleanText(state?.world?.time, 120) || '未明确'}
 当前地点/范围：${cleanText(state?.world?.location, 240) || '未明确'}
 
 可用于“新闻事实”的当前公开来源：
@@ -109,7 +109,7 @@ export function buildStreetPublicOpinionMessages(state, { worldReferenceText = '
 10. 去哪逛逛必须给 3～5 个地点建议；优先已有或自然可达地点，也可给符合世界语境的普通场所灵感，但灵感地点必须 established=false。
 11. 地点 prompt 要写成可直接填入 SillyTavern 输入框的简短剧情引子，不得宣称结果已经发生。
 12. 只输出严格 JSON。`;
-    const prompt = `世界观参考（只用于时代、地理、生活方式与已有场所约束；不能把其中的背景内容宣称为本轮已发生事件）：\n${worldReferenceText || '（未提供）'}\n\nSceneWorld 已推演状态（当前世界 + 最近5次动态 + 持续性公开/迹象事实）：\n${observationStateText || '（未提供）'}\n\n可选柏宝书长期历史（只用于较早背景与世界连续性，不得把旧事直接当成本轮街巷消息）：\n${longTermHistoryText || '（未启用或无可用历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n环境提示：\n${JSON.stringify(context, null, 2)}
+    const prompt = `世界观参考（只用于时代、地理、生活方式与已有场所约束；不能把其中的背景内容宣称为本轮已发生事件）：\n${worldReferenceText || '（未提供）'}\n\nSceneWorld 已推演状态（当前世界 + 最近5次动态 + 持续性公开/迹象事实）：\n${observationStateText || '（未提供）'}\n\n可选记忆插件长期历史（只用于较早背景与世界连续性，不得把旧事直接当成本轮街巷消息）：\n${longTermHistoryText || '（未启用或无可用历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n环境提示：\n${JSON.stringify(context, null, 2)}
 
 请返回：
 {

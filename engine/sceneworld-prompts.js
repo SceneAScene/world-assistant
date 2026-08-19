@@ -18,7 +18,7 @@ const SYSTEM_PROMPT = `你是 SceneWorld（世界动态）的世界状态结算�
 - 当前剧情事实来源只允许 AI 回复正文。USER 消息不会提供给你，也不得反推 USER 指令。
 - 程序只提供正文范围标签内部的 AI 正文；标签外状态栏、属性面板、行动选项、小剧场、思维链等不属于剧情事实。
 - “世界观参考”只约束世界规则、人物基础、地理、时代和制度；世界书写着某地点存在，不等于本轮该地点发生了新事件。
-- “柏宝书长期历史”如果提供，只用于理解更久以前已经发生的剧情；它可能被压缩或存在缺口，不能覆盖本轮正文中的最新事实。
+- “记忆插件长期历史”如果提供，只用于理解更久以前已经发生的剧情；它可能被压缩或存在缺口，不能覆盖本轮正文中的最新事实。
 - “最近世界动态”只保留最近 5 次推演摘要，用来解释世界最近如何到达当前状态；不要把旧摘要重复当成本轮新变化。
 - 本轮正文每次最多 10 条 AI 回复，必须整体理解，以区间末尾明确成立的状态为当前状态。
 - 剧情先后顺序首先以 AI 楼层顺序为准。正文出现明确剧情日期/时间时更新 world_patch.time；没有新时间则返回 null，不得补造日期。
@@ -109,7 +109,7 @@ function transcript(messages) {
 
 export function buildManualSimulationMessages({ state, batch, worldReferenceText = '', longTermHistoryText = '', longTermHistoryNote = '' }) {
     const pending = transcript(batch?.pendingMessages);
-    const userPrompt = `世界观参考（只作为设定约束，不代表当前事件已经发生）：\n${worldReferenceText || '（未提供）'}\n\n可选长期压缩历史（柏宝书）：\n${longTermHistoryText || '（未启用或当前无可用长期历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n\n请只返回下面结构的严格 JSON。顶层字段必须全部保留；数组没有内容时返回 []。如果当前 SceneWorld 的 world.summary 为空，说明这是首次建立当前世界基线，此时 world_patch.summary 必须填写：\n{
+    const userPrompt = `世界观参考（只作为设定约束，不代表当前事件已经发生）：\n${worldReferenceText || '（未提供）'}\n\n可选长期压缩历史（记忆插件）：\n${longTermHistoryText || '（未启用或当前无可用长期历史）'}${longTermHistoryNote ? `\n${longTermHistoryNote}` : ''}\n\n当前 SceneWorld 权威状态：\n${JSON.stringify(compactState(state), null, 2)}\n\n本轮待结算 AI 正文：\n${pending}\n\n待结算范围：#${batch.startId} ～ #${batch.endId}\nAI 正文数：${batch.assistantCount}\nAI 正文字符数：${batch.characters}\n\n请只返回下面结构的严格 JSON。顶层字段必须全部保留；数组没有内容时返回 []。如果当前 SceneWorld 的 world.summary 为空，说明这是首次建立当前世界基线，此时 world_patch.summary 必须填写：\n{
   "simulation_digest": "本轮世界净变化的1～3句摘要；没有值得进入最近动态的变化则留空",
   "world_patch": {
     "time": "正文中区间末尾最新明确剧情日期/时间；本轮没有新时间则 null",

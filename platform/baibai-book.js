@@ -68,7 +68,7 @@ export function buildBaiBaiBookHistoryContext({ purpose = 'simulation' } = {}) {
             },
         };
     } catch (error) {
-        console.warn(`[SceneWorld] 柏宝书长期历史读取失败（${mode === 'observation' ? '见闻' : '世界推演'}），已跳过`, error);
+        console.warn(`[SceneWorld] 记忆插件长期历史读取失败（${mode === 'observation' ? '见闻' : '世界推演'}），已跳过`, error);
         return {
             text: '',
             stats: {

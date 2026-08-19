@@ -1,9 +1,9 @@
 import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { clearSceneWorldSection, inspectSceneWorldStorage } from '../data/sceneworld-store.js';
-import { createApiPresetSnapshot, fetchCustomApiModels, getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { createApiPresetSnapshot, fetchCustomApiModels, getSceneWorldContextLimit, getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { getCurrentWorldEntryChoices } from '../platform/world-reference.js';
-import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
+import { inspectPendingNarrative, inspectPendingSimulationBudget, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
 import { favoriteOpinionItem, removeChronicleItem } from '../services/chronicle.js';
 import { editContinuityFact, removeContinuityFact } from '../services/continuity.js';
@@ -28,7 +28,7 @@ export function createSceneWorldController({ version }) {
             events.onEmitter(source, chatChanged, () => shell?.onChatChanged?.());
         }
 
-        // 柏宝书可能晚于世界动态加载。监听其公开就绪事件，避免设置页永久停在“未检测到”。
+        // 记忆插件可能晚于世界动态加载。监听其公开就绪事件，避免设置页永久停在“未检测到”。
         events.listen(window, 'st-baibai-book:ready', () => shell?.onBaiBaiReady?.());
 
         publicApi = Object.freeze({
@@ -52,6 +52,7 @@ export function createSceneWorldController({ version }) {
             onClose: close,
             actions: {
                 inspectPendingNarrative,
+                inspectPendingBudget: expectedBatch => tasks.run('token-budget', () => inspectPendingSimulationBudget(expectedBatch)),
                 simulatePending: expectedBatch => tasks.run('manual-simulation', () => simulatePendingNarrative(expectedBatch)),
                 inspectPublicOpinion,
                 refreshPublicOpinion: () => tasks.run('public-opinion', refreshCanonicalPublicOpinion),
@@ -64,6 +65,7 @@ export function createSceneWorldController({ version }) {
                     return String(target?.value ?? '');
                 },
                 getSettings: getSceneWorldSettings,
+                getModelContextLimit: () => getSceneWorldContextLimit(getSceneWorldSettings()),
                 getWorldEntries: getCurrentWorldEntryChoices,
                 updateSettings: updateSceneWorldSettings,
                 fetchCustomApiModels: config => tasks.run('custom-api-models', () => fetchCustomApiModels(config)),

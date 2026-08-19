@@ -3,8 +3,8 @@ import { extractNarrativeContent, narrativeFilterSignature } from './narrative-c
 export const PENDING_CONTEXT_LIMITS = Object.freeze({
     // 每次世界推演最多处理 10 条 AI 正文，避免高楼层聊天首次启用时整段回灌。
     maxPendingAssistantMessages: 10,
-    // 字符预算仍作为第二道保险；即使 10 条正文异常超长，也不会静默截断。
-    maxPendingCharacters: 48000,
+    // alpha.31 起不再用固定字符数判断能否推演。
+    // 真正的安全检查在完整提示词组装后按 Token 预算执行，不会静默截断正文。
 });
 
 function cleanText(value) {
@@ -273,11 +273,13 @@ export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options
     }
 
     const endMessage = pendingMessages[pendingMessages.length - 1];
-    const overBudget = characters > limits.maxPendingCharacters;
+    // 字符数仅用于界面显示。不同模型/语言的 Token 密度差异很大，
+    // 是否超出上下文改由世界推演阶段的完整 Token 预检决定。
+    const overBudget = false;
 
     return Object.freeze({
         hasPending: true,
-        canSimulate: !overBudget,
+        canSimulate: true,
         anchorChanged: false,
         anchorReason: '',
         lastProcessedAssistantMessageId,

@@ -23,14 +23,17 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     uiScalePercent: 100,
     uiFontUrl: '',
     uiFontFamily: '',
-    glassEffect: 'off', // off | soft | strong
 
     modelConnectionMode: 'tavern', // tavern | custom
     customApiUrl: '',
     customApiKey: '',
     customApiModel: '',
     customApiTimeoutSec: 180,
-    // API 配置库：命名快照。载入只填回表单，用户点击“保存模型设置”后才真正生效。
+
+    // 最大输出只控制模型回复长度，不限制输入正文。
+    modelMaxOutputTokens: 8000,
+
+    // API 配置库只保存地址、Key 与模型，便于快速切换来源。
     apiPresets: Object.freeze([]),
     apiPresetActiveId: '',
 });
@@ -103,14 +106,7 @@ function normalizeApiPresets(value) {
         let id = String(raw.id ?? '').trim();
         if (!id || seen.has(id)) id = makePresetId(name);
         seen.add(id);
-        result.push({
-            id,
-            name,
-            url,
-            key,
-            model,
-            timeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(raw.timeoutSec ?? raw.timeout) || 180))),
-        });
+        result.push({ id, name, url, key, model });
         if (result.length >= 24) break;
     }
     return result;
@@ -173,12 +169,12 @@ export function getSceneWorldSettings() {
         uiScalePercent,
         uiFontUrl: String(source.uiFontUrl ?? '').trim(),
         uiFontFamily: String(source.uiFontFamily ?? '').trim(),
-        glassEffect: ['soft', 'strong'].includes(String(source.glassEffect ?? '').toLowerCase()) ? String(source.glassEffect).toLowerCase() : 'off',
         modelConnectionMode: String(merged.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern',
         customApiUrl: String(merged.customApiUrl || '').trim(),
         customApiKey: String(merged.customApiKey || ''),
         customApiModel: String(merged.customApiModel || '').trim(),
         customApiTimeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(merged.customApiTimeoutSec) || DEFAULT_SCENEWORLD_SETTINGS.customApiTimeoutSec))),
+        modelMaxOutputTokens: Math.max(1024, Math.min(65536, Math.trunc(Number(merged.modelMaxOutputTokens) || DEFAULT_SCENEWORLD_SETTINGS.modelMaxOutputTokens))),
         apiPresets,
         apiPresetActiveId: apiPresets.some(item => item.id === activeId) ? activeId : '',
     };
@@ -203,6 +199,7 @@ export function updateSceneWorldSettings(patch) {
         ['observationWorldInfoMaxChars', 2000, 32000],
         ['baibaiHistoryMaxChars', 2000, 20000],
         ['customApiTimeoutSec', 30, 600],
+        ['modelMaxOutputTokens', 1024, 65536],
     ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }
@@ -214,7 +211,6 @@ export function updateSceneWorldSettings(patch) {
     for (const key of ['customApiUrl', 'customApiKey', 'customApiModel', 'uiFontUrl', 'uiFontFamily']) {
         if (key in patch) next[key] = String(patch[key] ?? '').trim();
     }
-    if ('glassEffect' in patch) next.glassEffect = ['soft', 'strong'].includes(String(patch.glassEffect ?? '').toLowerCase()) ? String(patch.glassEffect).toLowerCase() : 'off';
 
     if ('apiPresets' in patch) next.apiPresets = normalizeApiPresets(patch.apiPresets);
     if ('apiPresetActiveId' in patch) {
@@ -248,7 +244,7 @@ export function updateSceneWorldSettings(patch) {
     for (const key of [
         'includeCharacterBase', 'includeCharacterWorldInfo', 'includeChatWorldInfo', 'includeGlobalWorldInfo',
         'characterBaseMaxChars', 'worldBookSelection', 'simulationWorldBookSelection', 'observationWorldBookSelection',
-        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale',
+        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale', 'glassEffect', 'modelContextMode', 'modelContextTokens',
     ]) delete next[key];
 
     extension_settings.sceneworld = next;
@@ -262,7 +258,13 @@ export function updateSceneWorldSettings(patch) {
     };
 }
 
-export function createApiPresetSnapshot({ name, url, key, model, timeoutSec = 180, id = '' } = {}) {
+export function createApiPresetSnapshot({
+    name,
+    url,
+    key,
+    model,
+    id = '',
+} = {}) {
     const presetName = String(name ?? '').trim().slice(0, 80);
     const apiUrl = String(url ?? '').trim();
     if (!presetName) throw new Error('API 配置名称不能为空');
@@ -273,7 +275,6 @@ export function createApiPresetSnapshot({ name, url, key, model, timeoutSec = 18
         url: apiUrl,
         key: String(key ?? ''),
         model: String(model ?? '').trim(),
-        timeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(timeoutSec) || 180))),
     };
 }
 
@@ -336,6 +337,99 @@ export function getSceneWorldEventApi() {
     };
 }
 
+function flattenPromptMessages(messages) {
+    return (Array.isArray(messages) ? messages : []).map(message => {
+        const role = String(message?.role ?? 'user');
+        const content = Array.isArray(message?.content)
+            ? message.content.map(part => typeof part === 'string' ? part : String(part?.text ?? '')).join('\n')
+            : String(message?.content ?? '');
+        return `${role}:\n${content}`;
+    }).join('\n\n');
+}
+
+function fallbackTokenEstimate(text) {
+    let cjk = 0;
+    let ascii = 0;
+    let other = 0;
+    for (const ch of String(text ?? '')) {
+        const code = ch.codePointAt(0) ?? 0;
+        const isCjk = (code >= 0x3400 && code <= 0x9fff)
+            || (code >= 0xf900 && code <= 0xfaff)
+            || (code >= 0x3040 && code <= 0x30ff)
+            || (code >= 0xac00 && code <= 0xd7af);
+        if (isCjk) cjk += 1;
+        else if (code <= 0x7f) ascii += /\s/.test(ch) ? 0.25 : 1;
+        else other += 1;
+    }
+    return Math.max(1, Math.ceil(cjk * 1.08 + ascii / 3.4 + other * 0.9));
+}
+
+export async function estimateSceneWorldMessageTokens(messages) {
+    const promptText = flattenPromptMessages(messages);
+    const context = getContextSafe();
+    const counter = context?.getTokenCountAsync;
+    if (typeof counter === 'function') {
+        try {
+            const counted = Number(await counter(promptText, 0));
+            if (Number.isFinite(counted) && counted > 0) {
+                return {
+                    tokens: Math.ceil(counted + Math.max(8, (Array.isArray(messages) ? messages.length : 0) * 4)),
+                    method: 'tavern-tokenizer',
+                };
+            }
+        } catch (error) {
+            console.warn('[SceneWorld] SillyTavern token counter failed, using fallback estimate', error);
+        }
+    }
+    return {
+        tokens: fallbackTokenEstimate(promptText) + Math.max(8, (Array.isArray(messages) ? messages.length : 0) * 6),
+        method: 'fallback-estimate',
+    };
+}
+
+export function getSceneWorldContextLimit(settings = getSceneWorldSettings()) {
+    // 自定义 API 的上下文窗口通常无法从通用模型列表可靠取得。
+    // 未知时只做输入估算，不要求用户手动填写技术参数，也不阻断调用。
+    if (settings.modelConnectionMode === 'custom') {
+        return { tokens: null, source: 'unknown-custom' };
+    }
+    const context = getContextSafe();
+    const current = Number(context?.maxContext);
+    if (Number.isFinite(current) && current > 0) {
+        return { tokens: Math.trunc(current), source: 'tavern' };
+    }
+    return { tokens: null, source: 'unknown' };
+}
+
+export async function inspectSceneWorldTokenBudget(messages) {
+    const settings = getSceneWorldSettings();
+    const estimate = await estimateSceneWorldMessageTokens(messages);
+    const outputTokens = Math.max(1024, Math.min(65536, Math.trunc(Number(settings.modelMaxOutputTokens) || 8000)));
+    const context = getSceneWorldContextLimit(settings);
+    const totalTokens = estimate.tokens + outputTokens;
+    // 自定义 API 的分词器可能与酒馆当前连接不同，因此使用更保守的 10% 余量。
+    const safetyRatio = settings.modelConnectionMode === 'custom' ? 0.90 : 0.95;
+    const safetyLimit = context.tokens ? Math.floor(context.tokens * safetyRatio) : null;
+    let status = 'unknown';
+    if (safetyLimit) {
+        if (totalTokens > safetyLimit) status = 'blocked';
+        else if (totalTokens > Math.floor(safetyLimit * 0.82)) status = 'near';
+        else status = 'safe';
+    }
+    return Object.freeze({
+        inputTokens: estimate.tokens,
+        outputTokens,
+        totalTokens,
+        contextTokens: context.tokens,
+        safetyLimit,
+        status,
+        canProceed: status !== 'blocked',
+        tokenMethod: estimate.method,
+        contextSource: context.source,
+        safetyRatio,
+    });
+}
+
 export async function generateWithCurrentConnection(messages, { responseLength = 1800 } = {}) {
     if (!Array.isArray(messages) || messages.length === 0) throw new Error('生成请求没有可用提示词');
     const result = await generateRaw({
@@ -390,7 +484,7 @@ async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
             model,
             messages,
             stream: false,
-            max_tokens: Math.max(256, Math.min(32000, Math.trunc(Number(responseLength) || 1800))),
+            max_tokens: Math.max(256, Math.min(65536, Math.trunc(Number(responseLength) || 1800))),
         };
         const res = await fetch('/api/backends/chat-completions/generate', {
             method: 'POST',
@@ -414,10 +508,16 @@ async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
 
 export async function generateSceneWorldText(messages, options = {}) {
     const settings = getSceneWorldSettings();
+    const resolved = {
+        ...options,
+        responseLength: Number.isFinite(Number(options.responseLength))
+            ? Math.max(1024, Math.min(65536, Math.trunc(Number(options.responseLength))))
+            : Math.max(1024, Math.min(65536, Math.trunc(Number(settings.modelMaxOutputTokens) || 8000))),
+    };
     if (settings.modelConnectionMode === 'custom') {
-        return generateWithCustomApi(messages, options);
+        return generateWithCustomApi(messages, resolved);
     }
-    return generateWithCurrentConnection(messages, options);
+    return generateWithCurrentConnection(messages, resolved);
 }
 
 export async function fetchCustomApiModels({ url, key } = {}) {

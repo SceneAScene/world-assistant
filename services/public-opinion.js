@@ -10,7 +10,7 @@ import {
     normalizeStreetWanderPayload,
     parsePublicOpinionResponse,
 } from '../engine/public-opinion-result.js';
-import { generateSceneWorldText } from '../platform/sillytavern.js';
+import { generateSceneWorldText, inspectSceneWorldTokenBudget } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 
@@ -109,7 +109,7 @@ export async function refreshCanonicalPublicOpinion() {
     const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base), purpose: 'observation' });
     const baibai = buildBaiBaiBookHistoryContext({ purpose: 'observation' });
     const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
-        ? '注意：柏宝书报告长期历史存在摘要缺口，只能作为不完整的较早背景。'
+        ? '注意：记忆插件报告长期历史存在摘要缺口，只能作为不完整的较早背景。'
         : '';
     const messages = buildCanonicalPublicOpinionMessages(base, {
         worldReferenceText: formatWorldReferenceContext(reference),
@@ -117,7 +117,11 @@ export async function refreshCanonicalPublicOpinion() {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateSceneWorldText(messages, { responseLength: 6000 });
+    const tokenBudget = await inspectSceneWorldTokenBudget(messages);
+    if (!tokenBudget.canProceed) {
+        throw new Error(`见闻生成预计需要约 ${tokenBudget.totalTokens} Token，超过当前上下文安全预算 ${tokenBudget.safetyLimit}。请减少见闻参考条目、关闭记忆插件长期历史，或切换上下文更充足的模型。`);
+    }
+    const raw = await generateSceneWorldText(messages);
     const payload = parsePublicOpinionResponse(raw, { kind: 'canonical' });
     const normalized = normalizeCanonicalOpinionPayload(payload, { sources, generatedAt });
 
@@ -146,6 +150,7 @@ export async function refreshCanonicalPublicOpinion() {
         reason: normalized.news.length || normalized.forum.length ? 'generated' : 'empty-generated',
         worldReference: reference.stats,
         baibai: baibai.stats,
+        tokenBudget,
     };
 }
 
@@ -156,7 +161,7 @@ export async function refreshStreetPublicOpinion() {
     const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base), purpose: 'observation' });
     const baibai = buildBaiBaiBookHistoryContext({ purpose: 'observation' });
     const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
-        ? '注意：柏宝书报告长期历史存在摘要缺口，只能作为不完整的较早背景。'
+        ? '注意：记忆插件报告长期历史存在摘要缺口，只能作为不完整的较早背景。'
         : '';
     const messages = buildStreetPublicOpinionMessages(base, {
         worldReferenceText: formatWorldReferenceContext(reference),
@@ -164,7 +169,11 @@ export async function refreshStreetPublicOpinion() {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateSceneWorldText(messages, { responseLength: 7000 });
+    const tokenBudget = await inspectSceneWorldTokenBudget(messages);
+    if (!tokenBudget.canProceed) {
+        throw new Error(`见闻生成预计需要约 ${tokenBudget.totalTokens} Token，超过当前上下文安全预算 ${tokenBudget.safetyLimit}。请减少见闻参考条目、关闭记忆插件长期历史，或切换上下文更充足的模型。`);
+    }
+    const raw = await generateSceneWorldText(messages);
     const payload = parsePublicOpinionResponse(raw, { kind: 'street' });
     const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
     if (normalized.street.length < 3 || normalized.places.length < 3) {
@@ -193,5 +202,5 @@ export async function refreshStreetPublicOpinion() {
     next.guidance.actionsUpdatedAt = next.guidance.actionsUpdatedAt ?? null;
     next.guidance.actionsSourceMessageId = Number.isInteger(next.guidance.actionsSourceMessageId) ? next.guidance.actionsSourceMessageId : null;
     const saved = await commitSceneWorldState(next);
-    return { calledModel: true, state: saved, raw, itemCount: normalized.street.length, placeCount: next.guidance.places.length, baseUpdatedAt: stateUpdatedAt, worldReference: reference.stats, baibai: baibai.stats };
+    return { calledModel: true, state: saved, raw, itemCount: normalized.street.length, placeCount: next.guidance.places.length, baseUpdatedAt: stateUpdatedAt, worldReference: reference.stats, baibai: baibai.stats, tokenBudget };
 }
