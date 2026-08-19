@@ -1,6 +1,6 @@
 import { mountWandEntry, unmountWandEntry } from './ui/wand-entry.js';
 
-const VERSION = '2.0.0-alpha.26';
+const VERSION = '2.0.0-alpha.27';
 let controller = null;
 let controllerPromise = null;
 let activated = false;

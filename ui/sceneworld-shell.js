@@ -393,19 +393,315 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelector('[data-initial-settlement-mode]')?.addEventListener('change',event=>{try{const mode=String(event.currentTarget?.value??'latest')==='from_floor'?'from_floor':'latest';actions?.updateSettings?.({initialSettlementMode:mode});preview=null;const wrap=shadow.querySelector('[data-initial-start-floor-wrap]');if(wrap)wrap.hidden=mode!=='from_floor';notify(mode==='from_floor'?'首次推演起点已切换为从指定楼层开始':'首次推演起点已切换为从当前开始','success')}catch(error){console.error('[SceneWorld] initial settlement mode failed',error);notify(`保存首次推演起点失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-initial-start-floor]')?.addEventListener('change',event=>{try{const floor=Math.max(0,Math.trunc(Number(event.currentTarget?.value)||0));actions?.updateSettings?.({initialStartFloor:floor});preview=null;notify(`首次推演起点已设为 #${floor}`,'success')}catch(error){console.error('[SceneWorld] initial start floor failed',error);notify(`保存起始楼层失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged)notify(batch.anchorReason,'error');else if(!batch?.hasPending)notify('当前没有新的 AI 正文需要推演','info');else if(batch.overBudget)notify(`本批 ${batch.limits?.maxPendingAssistantMessages||10} 条以内的正文仍超过单次安全预算，请查看界面说明`,'warning')}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待推演剧情失败：${error?.message||error}`,'error')}render()});
-        shadow.querySelector('[data-action="simulate"]')?.addEventListener('click',async()=>{const batch=preview?.batch;if(!batch?.canSimulate)return;const confirmed=await openConfirmDialog({title:'开始世界推演',message:`将调用一次酒馆当前模型，推演 #${batch.startId}～#${batch.endId} 共 ${batch.assistantCount} 条 AI 正文。`,confirmLabel:'开始推演'});if(!confirmed)return;runBusy(async()=>{try{const result=await actions?.simulatePending?.(batch);preview=actions?.inspectPendingNarrative?.()??preview;const count=countReportedChanges(result?.changeSummary);const ref=result?.worldReference;const refText=ref?` · 世界观参考：${ref.characterDescriptionUsed?'角色描述 + ':''}${ref.selectedEntries||0} 条世界书条目`:'';const bb=result?.baibai;const bbText=bb?.enabled?(bb?.used?` · 柏宝书长期历史 ${bb.chars||0} 字符`:(bb?.available?' · 柏宝书本轮无可用长期历史':' · 柏宝书接口未检测到')):'';notify((count?`世界推演完成：#${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`:`世界推演完成：#${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`)+refText+bbText,'success')}catch(error){console.error('[SceneWorld] pending simulation failed',error);notify(`世界推演失败：${error?.message||error}`,'error')}})});});
-        shadow.querySelector('[data-action="refresh-opinion"]')?.addEventListener('click',async()=>{try{const info=actions?.inspectPublicOpinion?.();if(!info?.simulationReady)throw new Error('请先完成至少一次世界推演，建立当前世界状态后再生成见闻');const confirmed=await openConfirmDialog({title:'刷新公共动态',message:`将调用一次模型。新闻只会使用当前 ${info.publicCount} 条公开世界事实；论坛可围绕当前世界状态和主题自然生成。`,confirmLabel:'刷新'});if(!confirmed)return;runBusy(async()=>{try{const result=await actions?.refreshPublicOpinion?.();if((result.newsCount||0)+(result.forumCount||0)===0)notify('公共动态刷新完成：本轮新闻为空，论坛也未形成有效内容','success');else {const ref=result?.worldReference;const refText=ref?` · 参考 ${ref.selectedEntries||0} 条世界书条目`:'';notify(`公共动态刷新完成：${result.newsCount||0} 条新闻，${result.forumCount||0} 条讨论${refText}`,'success')}}catch(error){console.error('[SceneWorld] public info failed',error);notify(`刷新公共动态失败：${error?.message||error}`,'error')}})});}catch(error){console.error('[SceneWorld] public info precheck failed',error);notify(`刷新公共动态失败：${error?.message||error}`,'error')}});
-        shadow.querySelector('[data-action="refresh-street"]')?.addEventListener('click',async()=>{const info=actions?.inspectPublicOpinion?.();if(!info?.simulationReady){notify('请先完成至少一次世界推演，建立当前世界状态后再生成见闻','warning');return}const confirmed=await openConfirmDialog({title:'开始街巷漫游',message:'将调用一次模型，同时生成生活化市井闲闻和 3～5 个地点建议。这些内容不会自动写入世界事实。',confirmLabel:'开始漫游'});if(!confirmed)return;runBusy(async()=>{try{const result=await actions?.refreshStreetOpinion?.();const ref=result?.worldReference;const refText=ref?` · 参考 ${ref.selectedEntries||0} 条世界书条目`:'';notify(`街巷漫游已更新：${result?.itemCount||0} 条市井闲闻，${result?.placeCount||0} 个地点${refText}`,'success')}catch(error){console.error('[SceneWorld] street opinion failed',error);notify(`街巷漫游失败：${error?.message||error}`,'error')}})});});
-        shadow.querySelectorAll('[data-insert-guidance]').forEach(button=>button.addEventListener('click',async()=>{try{const state=readSceneWorldState();const kind=button.dataset.guidanceKind;const list=kind==='place'?state?.guidance?.places:state?.guidance?.actions;const item=Array.isArray(list)?list.find(entry=>entry?.id===button.dataset.insertGuidance):null;if(!item?.prompt)throw new Error('这条建议已经不存在，请重新生成');const existing=String(actions?.getChatInputText?.()??'').trim();let overwrite=false;if(existing&&existing!==item.prompt){const confirmed=await openConfirmDialog({title:'替换输入框内容',message:'SillyTavern 输入框里已经有内容。是否用这条建议替换现有内容？',confirmLabel:'替换'});if(!confirmed)return;overwrite=true}const inserted=actions?.putTextIntoChatInput?.(item.prompt,{overwrite});if(inserted===false)return;notify('已填入 SillyTavern 输入框','success');onClose?.()}catch(error){console.error('[SceneWorld] insert guidance failed',error);notify(`填入输入框失败：${error?.message||error}`,'error')}}));
-        shadow.querySelectorAll('[data-favorite-type]').forEach(button=>button.addEventListener('click',()=>runBusy(async()=>{try{await actions?.favoriteOpinion?.(button.dataset.favoriteType,button.dataset.favoriteId);notify('已收藏到纪事','success')}catch(error){console.error('[SceneWorld] favorite failed',error);notify(`收藏失败：${error?.message||error}`,'error')}})));
-        shadow.querySelector('[data-add-person]')?.addEventListener('click',()=>openPersonEditor(null));
-        shadow.querySelectorAll('[data-edit-person]').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const state=readSceneWorldState();const person=(state?.people||[]).find(item=>item?.id===button.dataset.editPerson);if(person)openPersonEditor(person)}));
-        shadow.querySelectorAll('[data-remove-person]').forEach(button=>button.addEventListener('click',async event=>{event.preventDefault();event.stopPropagation();const state=readSceneWorldState();const person=(state?.people||[]).find(item=>item?.id===button.dataset.removePerson);if(!person)return;const confirmed=await openConfirmDialog({title:'删除人物',message:`确定删除人物“${person.name}”吗？后续正文再次明确出现时，世界推演仍可能重新识别该人物。`,confirmLabel:'删除',danger:true});if(!confirmed)return;runBusy(async()=>{try{await actions?.removePerson?.(person.id);notify('人物已删除','success')}catch(error){console.error('[SceneWorld] person remove failed',error);notify(`删除人物失败：${error?.message||error}`,'error')}})});}));
-        shadow.querySelectorAll('[data-remove-chronicle]').forEach(button=>button.addEventListener('click',async()=>{const confirmed=await openConfirmDialog({title:'删除纪事收藏',message:'确定删除这条收藏吗？只会移出纪事，不会修改世界事实。',confirmLabel:'删除',danger:true});if(!confirmed)return;runBusy(async()=>{try{await actions?.removeChronicle?.(button.dataset.removeChronicle);notify('已从纪事删除','success')}catch(error){console.error('[SceneWorld] chronicle remove failed',error);notify(`删除收藏失败：${error?.message||error}`,'error')}})});}));
-        shadow.querySelectorAll('[data-remove-continuity-fact]').forEach(button=>button.addEventListener('click',async()=>{const confirmed=await openConfirmDialog({title:'删除持续性世界事实',message:'删除后，后续推演将不再把这条内容作为世界连续性约束。确定删除吗？',confirmLabel:'删除',danger:true});if(!confirmed)return;runBusy(async()=>{try{await actions?.removeContinuityFact?.(button.dataset.removeContinuityFact);notify('已删除持续性世界事实','success')}catch(error){console.error('[SceneWorld] continuity fact remove failed',error);notify(`删除持续性世界事实失败：${error?.message||error}`,'error')}})});}));
-        shadow.querySelectorAll('[data-edit-continuity-fact]').forEach(button=>button.addEventListener('click',async()=>{try{const state=readSceneWorldState();const item=state?.world?.facts?.find(entry=>entry?.id===button.dataset.editContinuityFact);if(!item)throw new Error('这条持续性世界事实已经不存在');const value=await openTextDialog({title:'修改持续性世界事实',description:'手动修正后的内容会作为后续世界推演的连续性约束。',label:'事实内容',value:item.value||'',confirmLabel:'保存'});if(value===null)return;if(!String(value).trim())throw new Error('事实内容不能为空');runBusy(async()=>{try{await actions?.editContinuityFact?.(item.id,value);notify('持续性世界事实已手动修正','success')}catch(error){console.error('[SceneWorld] continuity fact edit failed',error);notify(`修改持续性世界事实失败：${error?.message||error}`,'error')}})});}catch(error){console.error('[SceneWorld] continuity fact edit prepare failed',error);notify(`修改持续性世界事实失败：${error?.message||error}`,'error')}}));
-        shadow.querySelectorAll('[data-clear-section]').forEach(button=>button.addEventListener('click',async()=>{const labels={people:'人物',observation:'见闻',continuity:'脉络',chronicle:'纪事',guidance:'行动建议'};const section=button.dataset.clearSection;const label=labels[section]||section;const confirmed=await openConfirmDialog({title:`清理${label}数据`,message:`只清理当前聊天的“${label}”数据，其他世界动态内容保留。`,confirmLabel:'清理',danger:true});if(!confirmed)return;runBusy(async()=>{try{const removed=await actions?.clearSection?.(section);notify(removed?`${label}数据已清理`:'当前聊天尚未建立世界动态数据','success')}catch(error){console.error('[SceneWorld] section clear failed',error);notify(`清理${label}失败：${error?.message||error}`,'error')}})});}));
-        shadow.querySelector('[data-action="clear"]')?.addEventListener('click',async()=>{const confirmed=await openConfirmDialog({title:'清理全部世界动态数据',message:'只删除当前聊天的 chatMetadata.世界动态数据。不会删除聊天正文，也不会触碰其他插件数据。',confirmLabel:'全部清理',danger:true});if(!confirmed)return;runBusy(async()=>{try{const removed=await clearSceneWorldState();preview=actions?.inspectPendingNarrative?.()??null;notify(removed?'当前聊天的 世界动态数据已清理':'当前聊天没有 世界动态数据','success')}catch(error){console.error('[SceneWorld] clear state failed',error);notify(`清理数据失败：${error?.message||error}`,'error')}})});});
+        shadow.querySelector('[data-action="simulate"]')?.addEventListener('click', async () => {
+            const batch = preview?.batch;
+            if (!batch?.canSimulate) return;
+
+            const confirmed = await openConfirmDialog({
+                title: '开始世界推演',
+                message: `将调用一次酒馆当前模型，推演 #${batch.startId}～#${batch.endId} 共 ${batch.assistantCount} 条 AI 正文。`,
+                confirmLabel: '开始推演',
+            });
+            if (!confirmed) return;
+
+            runBusy(async () => {
+                try {
+                    const result = await actions?.simulatePending?.(batch);
+                    preview = actions?.inspectPendingNarrative?.() ?? preview;
+                    const count = countReportedChanges(result?.changeSummary);
+                    const ref = result?.worldReference;
+                    const refText = ref
+                        ? ` · 世界观参考：${ref.characterDescriptionUsed ? '角色描述 + ' : ''}${ref.selectedEntries || 0} 条世界书条目`
+                        : '';
+                    const bb = result?.baibai;
+                    const bbText = bb?.enabled
+                        ? (bb?.used
+                            ? ` · 柏宝书长期历史 ${bb.chars || 0} 字符`
+                            : (bb?.available ? ' · 柏宝书本轮无可用长期历史' : ' · 柏宝书接口未检测到'))
+                        : '';
+                    const summary = count
+                        ? `世界推演完成：#${result.batch.startId}～#${result.batch.endId}，保存 ${count} 组变化`
+                        : `世界推演完成：#${result.batch.startId}～#${result.batch.endId}，本轮没有值得额外记录的变化`;
+                    notify(summary + refText + bbText, 'success');
+                } catch (error) {
+                    console.error('[SceneWorld] pending simulation failed', error);
+                    notify(`世界推演失败：${error?.message || error}`, 'error');
+                }
+            });
+        });
+
+        shadow.querySelector('[data-action="refresh-opinion"]')?.addEventListener('click', async () => {
+            try {
+                const info = actions?.inspectPublicOpinion?.();
+                if (!info?.simulationReady) {
+                    throw new Error('请先完成至少一次世界推演，建立当前世界状态后再生成见闻');
+                }
+
+                const confirmed = await openConfirmDialog({
+                    title: '刷新公共动态',
+                    message: `将调用一次模型。新闻只会使用当前 ${info.publicCount} 条公开世界事实；论坛可围绕当前世界状态和主题自然生成。`,
+                    confirmLabel: '刷新',
+                });
+                if (!confirmed) return;
+
+                runBusy(async () => {
+                    try {
+                        const result = await actions?.refreshPublicOpinion?.();
+                        if ((result.newsCount || 0) + (result.forumCount || 0) === 0) {
+                            notify('公共动态刷新完成：本轮新闻为空，论坛也未形成有效内容', 'success');
+                            return;
+                        }
+                        const ref = result?.worldReference;
+                        const refText = ref ? ` · 参考 ${ref.selectedEntries || 0} 条世界书条目` : '';
+                        notify(`公共动态刷新完成：${result.newsCount || 0} 条新闻，${result.forumCount || 0} 条讨论${refText}`, 'success');
+                    } catch (error) {
+                        console.error('[SceneWorld] public info failed', error);
+                        notify(`刷新公共动态失败：${error?.message || error}`, 'error');
+                    }
+                });
+            } catch (error) {
+                console.error('[SceneWorld] public info precheck failed', error);
+                notify(`刷新公共动态失败：${error?.message || error}`, 'error');
+            }
+        });
+
+        shadow.querySelector('[data-action="refresh-street"]')?.addEventListener('click', async () => {
+            const info = actions?.inspectPublicOpinion?.();
+            if (!info?.simulationReady) {
+                notify('请先完成至少一次世界推演，建立当前世界状态后再生成见闻', 'warning');
+                return;
+            }
+
+            const confirmed = await openConfirmDialog({
+                title: '开始街巷漫游',
+                message: '将调用一次模型，同时生成生活化市井闲闻和 3～5 个地点建议。这些内容不会自动写入世界事实。',
+                confirmLabel: '开始漫游',
+            });
+            if (!confirmed) return;
+
+            runBusy(async () => {
+                try {
+                    const result = await actions?.refreshStreetOpinion?.();
+                    const ref = result?.worldReference;
+                    const refText = ref ? ` · 参考 ${ref.selectedEntries || 0} 条世界书条目` : '';
+                    notify(`街巷漫游已更新：${result?.itemCount || 0} 条市井闲闻，${result?.placeCount || 0} 个地点${refText}`, 'success');
+                } catch (error) {
+                    console.error('[SceneWorld] street opinion failed', error);
+                    notify(`街巷漫游失败：${error?.message || error}`, 'error');
+                }
+            });
+        });
+
+        shadow.querySelectorAll('[data-insert-guidance]').forEach(button => {
+            button.addEventListener('click', async () => {
+                try {
+                    const state = readSceneWorldState();
+                    const kind = button.dataset.guidanceKind;
+                    const list = kind === 'place' ? state?.guidance?.places : state?.guidance?.actions;
+                    const item = Array.isArray(list)
+                        ? list.find(entry => entry?.id === button.dataset.insertGuidance)
+                        : null;
+                    if (!item?.prompt) throw new Error('这条建议已经不存在，请重新生成');
+
+                    const existing = String(actions?.getChatInputText?.() ?? '').trim();
+                    let overwrite = false;
+                    if (existing && existing !== item.prompt) {
+                        const confirmed = await openConfirmDialog({
+                            title: '替换输入框内容',
+                            message: 'SillyTavern 输入框里已经有内容。是否用这条建议替换现有内容？',
+                            confirmLabel: '替换',
+                        });
+                        if (!confirmed) return;
+                        overwrite = true;
+                    }
+
+                    const inserted = actions?.putTextIntoChatInput?.(item.prompt, { overwrite });
+                    if (inserted === false) return;
+                    notify('已填入 SillyTavern 输入框', 'success');
+                    onClose?.();
+                } catch (error) {
+                    console.error('[SceneWorld] insert guidance failed', error);
+                    notify(`填入输入框失败：${error?.message || error}`, 'error');
+                }
+            });
+        });
+
+        shadow.querySelectorAll('[data-favorite-type]').forEach(button => {
+            button.addEventListener('click', () => {
+                runBusy(async () => {
+                    try {
+                        await actions?.favoriteOpinion?.(button.dataset.favoriteType, button.dataset.favoriteId);
+                        notify('已收藏到纪事', 'success');
+                    } catch (error) {
+                        console.error('[SceneWorld] favorite failed', error);
+                        notify(`收藏失败：${error?.message || error}`, 'error');
+                    }
+                });
+            });
+        });
+
+        shadow.querySelector('[data-add-person]')?.addEventListener('click', () => openPersonEditor(null));
+
+        shadow.querySelectorAll('[data-edit-person]').forEach(button => {
+            button.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const state = readSceneWorldState();
+                const person = (state?.people || []).find(item => item?.id === button.dataset.editPerson);
+                if (person) openPersonEditor(person);
+            });
+        });
+
+        shadow.querySelectorAll('[data-remove-person]').forEach(button => {
+            button.addEventListener('click', async event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const state = readSceneWorldState();
+                const person = (state?.people || []).find(item => item?.id === button.dataset.removePerson);
+                if (!person) return;
+
+                const confirmed = await openConfirmDialog({
+                    title: '删除人物',
+                    message: `确定删除人物“${person.name}”吗？后续正文再次明确出现时，世界推演仍可能重新识别该人物。`,
+                    confirmLabel: '删除',
+                    danger: true,
+                });
+                if (!confirmed) return;
+
+                runBusy(async () => {
+                    try {
+                        await actions?.removePerson?.(person.id);
+                        notify('人物已删除', 'success');
+                    } catch (error) {
+                        console.error('[SceneWorld] person remove failed', error);
+                        notify(`删除人物失败：${error?.message || error}`, 'error');
+                    }
+                });
+            });
+        });
+
+        shadow.querySelectorAll('[data-remove-chronicle]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const confirmed = await openConfirmDialog({
+                    title: '删除纪事收藏',
+                    message: '确定删除这条收藏吗？只会移出纪事，不会修改世界事实。',
+                    confirmLabel: '删除',
+                    danger: true,
+                });
+                if (!confirmed) return;
+
+                runBusy(async () => {
+                    try {
+                        await actions?.removeChronicle?.(button.dataset.removeChronicle);
+                        notify('已从纪事删除', 'success');
+                    } catch (error) {
+                        console.error('[SceneWorld] chronicle remove failed', error);
+                        notify(`删除收藏失败：${error?.message || error}`, 'error');
+                    }
+                });
+            });
+        });
+
+        shadow.querySelectorAll('[data-remove-continuity-fact]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const confirmed = await openConfirmDialog({
+                    title: '删除持续性世界事实',
+                    message: '删除后，后续推演将不再把这条内容作为世界连续性约束。确定删除吗？',
+                    confirmLabel: '删除',
+                    danger: true,
+                });
+                if (!confirmed) return;
+
+                runBusy(async () => {
+                    try {
+                        await actions?.removeContinuityFact?.(button.dataset.removeContinuityFact);
+                        notify('已删除持续性世界事实', 'success');
+                    } catch (error) {
+                        console.error('[SceneWorld] continuity fact remove failed', error);
+                        notify(`删除持续性世界事实失败：${error?.message || error}`, 'error');
+                    }
+                });
+            });
+        });
+
+        shadow.querySelectorAll('[data-edit-continuity-fact]').forEach(button => {
+            button.addEventListener('click', async () => {
+                try {
+                    const state = readSceneWorldState();
+                    const item = state?.world?.facts?.find(entry => entry?.id === button.dataset.editContinuityFact);
+                    if (!item) throw new Error('这条持续性世界事实已经不存在');
+
+                    const value = await openTextDialog({
+                        title: '修改持续性世界事实',
+                        description: '手动修正后的内容会作为后续世界推演的连续性约束。',
+                        label: '事实内容',
+                        value: item.value || '',
+                        confirmLabel: '保存',
+                    });
+                    if (value === null) return;
+                    if (!String(value).trim()) throw new Error('事实内容不能为空');
+
+                    runBusy(async () => {
+                        try {
+                            await actions?.editContinuityFact?.(item.id, value);
+                            notify('持续性世界事实已手动修正', 'success');
+                        } catch (error) {
+                            console.error('[SceneWorld] continuity fact edit failed', error);
+                            notify(`修改持续性世界事实失败：${error?.message || error}`, 'error');
+                        }
+                    });
+                } catch (error) {
+                    console.error('[SceneWorld] continuity fact edit prepare failed', error);
+                    notify(`修改持续性世界事实失败：${error?.message || error}`, 'error');
+                }
+            });
+        });
+
+        shadow.querySelectorAll('[data-clear-section]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const labels = { people: '人物', observation: '见闻', continuity: '脉络', chronicle: '纪事', guidance: '行动建议' };
+                const section = button.dataset.clearSection;
+                const label = labels[section] || section;
+                const confirmed = await openConfirmDialog({
+                    title: `清理${label}数据`,
+                    message: `只清理当前聊天的“${label}”数据，其他世界动态内容保留。`,
+                    confirmLabel: '清理',
+                    danger: true,
+                });
+                if (!confirmed) return;
+
+                runBusy(async () => {
+                    try {
+                        const removed = await actions?.clearSection?.(section);
+                        notify(removed ? `${label}数据已清理` : '当前聊天尚未建立世界动态数据', 'success');
+                    } catch (error) {
+                        console.error('[SceneWorld] section clear failed', error);
+                        notify(`清理${label}失败：${error?.message || error}`, 'error');
+                    }
+                });
+            });
+        });
+
+        shadow.querySelector('[data-action="clear"]')?.addEventListener('click', async () => {
+            const confirmed = await openConfirmDialog({
+                title: '清理全部世界动态数据',
+                message: '只删除当前聊天的 chatMetadata.世界动态数据。不会删除聊天正文，也不会触碰其他插件数据。',
+                confirmLabel: '全部清理',
+                danger: true,
+            });
+            if (!confirmed) return;
+
+            runBusy(async () => {
+                try {
+                    const removed = await clearSceneWorldState();
+                    preview = actions?.inspectPendingNarrative?.() ?? null;
+                    notify(removed ? '当前聊天的 世界动态数据已清理' : '当前聊天没有 世界动态数据', 'success');
+                } catch (error) {
+                    console.error('[SceneWorld] clear state failed', error);
+                    notify(`清理数据失败：${error?.message || error}`, 'error');
+                }
+            });
+        });
     };
     shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){if(dialogs.active)return;event.stopPropagation();if(settingsOpen){settingsOpen=false;render();return}onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});
     document.body.appendChild(host);viewport.start();render();return{host,refresh:render,onChatChanged(){dialogs.cancelActive(null);preview=null;worldEntryChoices={simulation:null,observation:null};render()},onBaiBaiReady(){if(settingsOpen&&activeSettingsView==='reference')render()},destroy(){dialogs.destroy();viewport.stop();host?.remove()}};
