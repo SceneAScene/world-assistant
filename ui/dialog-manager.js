@@ -56,6 +56,12 @@ export function createSceneWorldDialogManager({ shadowRoot, escapeHtml = value =
         return session.promise;
     }
 
+    function info({ title = '说明', message = '', closeLabel = '知道了' } = {}) {
+        const session = createSession(`<section class="modal-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}"><h2>${escapeHtml(title)}</h2><div class="modal-message">${escapeHtml(message)}</div><div class="modal-actions"><button class="action primary" type="button" data-dialog-close>${escapeHtml(closeLabel)}</button></div></section>`, { defaultValue: true });
+        session.overlay.querySelector('[data-dialog-close]')?.addEventListener('click', () => session.finish(true));
+        return session.promise;
+    }
+
     function text({ title = '修改内容', description = '', label = '内容', value = '', confirmLabel = '保存', multiline = true } = {}) {
         const inputHtml = multiline
             ? `<textarea data-dialog-input>${escapeHtml(value)}</textarea>`
@@ -100,5 +106,5 @@ export function createSceneWorldDialogManager({ shadowRoot, escapeHtml = value =
         shadowRoot.querySelector('.modal-layer')?.remove();
     }
 
-    return Object.freeze({ confirm, text, form, cancelActive, destroy, get active() { return !!active; } });
+    return Object.freeze({ confirm, info, text, form, cancelActive, destroy, get active() { return !!active; } });
 }

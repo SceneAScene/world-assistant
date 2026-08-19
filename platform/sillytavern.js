@@ -26,8 +26,8 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     simulationUseBaiBaiBook: false,
     observationUseBaiBaiBook: false,
     baibaiHistoryMaxChars: 8000,
-    // 界面字体微调：-1=较小，0=标准，1=舒适，2=较大。
-    uiFontAdjust: 1,
+    // 世界动态独立界面字号比例。90%～125%，每次 5%。
+    uiFontScale: 110,
 });
 
 function normalizeContentTagName(value) {
@@ -130,7 +130,18 @@ export function getSceneWorldSettings() {
         simulationUseBaiBaiBook,
         observationUseBaiBaiBook,
         baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
-        uiFontAdjust: Math.max(-1, Math.min(2, Math.trunc(Number.isFinite(Number(merged.uiFontAdjust)) ? Number(merged.uiFontAdjust) : DEFAULT_SCENEWORLD_SETTINGS.uiFontAdjust))),
+        uiFontScale: (() => {
+            if (Number.isFinite(Number(source.uiFontScale))) {
+                const rawScale = Math.round(Number(source.uiFontScale) / 5) * 5;
+                return Math.max(90, Math.min(125, rawScale));
+            }
+            // 兼容 alpha.22～alpha.27 的 -1/0/1/2 字号档位。
+            if (Number.isFinite(Number(source.uiFontAdjust))) {
+                const legacy = Math.max(-1, Math.min(2, Math.trunc(Number(source.uiFontAdjust))));
+                return ({ '-1': 90, '0': 100, '1': 110, '2': 120 })[String(legacy)] || 110;
+            }
+            return DEFAULT_SCENEWORLD_SETTINGS.uiFontScale;
+        })(),
     };
 }
 
@@ -151,12 +162,15 @@ export function updateSceneWorldSettings(patch) {
         ['observationWorldInfoMaxChars', 2000, 32000],
         ['baibaiHistoryMaxChars', 2000, 20000],
         ['maxPendingAssistantMessages', 1, 10],
-        ['uiFontAdjust', -1, 2],
+        ['uiFontScale', 90, 125],
     ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }
     if ('maxPendingAssistantMessages' in patch) {
         next.maxPendingAssistantMessages = Number(patch.maxPendingAssistantMessages) === 5 ? 5 : 10;
+    }
+    if ('uiFontScale' in patch && Number.isFinite(Number(patch.uiFontScale))) {
+        next.uiFontScale = Math.max(90, Math.min(125, Math.round(Number(patch.uiFontScale) / 5) * 5));
     }
     if ('initialSettlementMode' in patch) {
         next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
@@ -214,6 +228,7 @@ export function updateSceneWorldSettings(patch) {
     delete next.observationWorldBookSelection;
     delete next.worldInfoMaxChars;
     delete next.useBaiBaiBook;
+    delete next.uiFontAdjust;
 
     extension_settings.sceneworld = next;
     saveSettingsDebounced?.();

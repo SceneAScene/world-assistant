@@ -17,12 +17,39 @@ const SETTINGS_TABS = [
     ['appearance', '外观'],
 ];
 
+const HELP_TOPICS = Object.freeze({
+    home: {
+        title: '关于“此刻”',
+        message: '“此刻”是世界动态的主控制页。先读取待推演剧情，再手动执行世界推演。\n\n世界推演只读取设置允许的 AI 正文标签范围，并结合当前世界状态、最近 5 次动态、持续性世界事实，以及可选的角色描述、世界书条目和柏宝书长期历史。',
+    },
+    people: {
+        title: '关于“人物”',
+        message: '人物页保存的是当前仍然成立的人物状态，不是人物履历。折叠时只显示姓名和当前位置；展开后查看当前状态、附加详情与已确认认知。\n\n如果 AI 识别错误、漏人或多识别人，可以直接手动修改、增加或删除。手动维护后的内容会继续参与后续世界推演。',
+    },
+    observation: {
+        title: '关于“见闻”',
+        message: '见闻必须建立在至少一次成功的世界推演之后。它不会重新读取原始剧情正文。\n\n“公共动态”中，新闻只根据已经成立的公开事实生成；论坛可以围绕当前世界主题、公开迹象和生活环境自然衍生讨论。\n\n“街巷漫游”每次生成市井闲闻和可探索地点。市井闲闻与灵感地点不会自动写回世界事实。',
+    },
+    continuity: {
+        title: '关于“脉络”',
+        message: '脉络只保存两类连续性信息：最近 5 次世界推演的净变化，以及最多 20 条仍然有效的持续性世界事实。\n\n持续性事实会参与后续推演；发现 AI 误判时可以手动修改或删除。较早的长期剧情历史可以按需交给柏宝书记忆插件提供。',
+    },
+    chronicle: {
+        title: '关于“纪事”',
+        message: '纪事是收藏夹，用来保存喜欢的新闻、论坛、市井闲闻或其他灵感。刷新见闻不会删除收藏。\n\n收藏本身不会自动成为世界事实，也不会自动发送给后续世界推演。',
+    },
+    reference: {
+        title: '关于“参考资料”',
+        message: '世界推演和见闻分别维护自己的参考资料。世界书按“条目”选择，不按整本世界书全量发送。\n\n第一次发现条目时，酒馆中已启用的条目默认勾选，关闭的条目默认不勾选；之后完全以世界动态里的手动选择为准。即使某条世界书条目当前在酒馆里关闭，也仍然可以单独勾选给世界动态使用。\n\n服装规则、状态栏格式、NSFW 规则等不需要的条目可以取消；趣味设定可以只勾给见闻。',
+    },
+});
+
 const STYLES = `
 :host{all:initial;position:fixed;top:var(--sw-vv-top,0px);left:var(--sw-vv-left,0px);right:auto;bottom:auto;width:var(--sw-vv-width,100vw);height:var(--sw-vv-height,100dvh);z-index:2147483000;display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#272821;--sw-bg:#f3f1e8;--sw-surface:#fbfaf5;--sw-card:#fffef9;--sw-text:#272821;--sw-muted:#74756c;--sw-faint:#99998f;--sw-line:#dedbcf;--sw-line-soft:#ebe8dc;--sw-accent:#66765c;--sw-accent-dark:#526149;--sw-accent-soft:#e8ede2;--sw-warn:#8a6d2e;--sw-warn-bg:#f5eedb;--sw-danger:#9a534d;--sw-danger-bg:#f5e8e5;--sw-shadow:0 18px 55px rgba(60,58,49,.18);--sw-font-adjust:1px}
 *,*::before,*::after{box-sizing:border-box}button,input,select,textarea{font:inherit}button{color:inherit}.backdrop{width:100%;height:100%;display:grid;place-items:center;padding:max(14px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:rgba(48,48,42,.34)}
 .panel{width:min(920px,96vw);height:min(820px,calc(var(--sw-vv-height,100dvh) - 28px));max-height:calc(var(--sw-vv-height,100dvh) - 12px);min-height:430px;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto;border:1px solid #d8d5c8;border-radius:20px;background:var(--sw-bg);box-shadow:var(--sw-shadow);color:var(--sw-text)}
 .header{min-height:60px;padding:11px 14px 10px 20px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--sw-line);background:rgba(251,250,245,.96)}.title{font-size:calc(19px + var(--sw-font-adjust));font-weight:760;letter-spacing:.035em;color:#20211c}.version{font-size:calc(10.5px + var(--sw-font-adjust));color:var(--sw-faint);margin-top:2px}.spacer{flex:1}.header-icon,.close{border:0;background:transparent;color:#42443c;width:38px;height:38px;border-radius:10px;cursor:pointer;line-height:1;display:grid;place-items:center;transition:background .16s,color .16s}.header-icon{font-size:calc(19px + var(--sw-font-adjust))}.close{font-size:calc(24px + var(--sw-font-adjust))}.header-icon:hover,.close:hover{background:var(--sw-accent-soft);color:var(--sw-accent-dark)}
-.content{overflow:auto;padding:22px 18px 26px;scrollbar-color:#c9c6b9 transparent}.stack{max-width:800px;margin:0 auto;display:grid;gap:16px}.page-intro{padding:2px 3px 0}.page-intro h1{margin:0;font-size:calc(20px + var(--sw-font-adjust));line-height:1.35;font-weight:760;color:#22231e}.page-intro p{margin:6px 0 0;color:var(--sw-muted);font-size:calc(13px + var(--sw-font-adjust));line-height:1.65}.page-kicker{font-size:calc(11px + var(--sw-font-adjust));color:var(--sw-accent-dark);font-weight:700;letter-spacing:.08em;margin-bottom:5px}
+.content{overflow:auto;padding:22px 18px 26px;scrollbar-color:#c9c6b9 transparent}.stack{max-width:800px;margin:0 auto;display:grid;gap:16px}.page-intro{padding:2px 3px 0}.page-title-row{display:flex;align-items:center;gap:8px}.page-title-row h1{flex:0 1 auto}.page-intro h1{margin:0;font-size:calc(20px + var(--sw-font-adjust));line-height:1.35;font-weight:760;color:#22231e}.page-intro p{margin:6px 0 0;color:var(--sw-muted);font-size:calc(13px + var(--sw-font-adjust));line-height:1.65}.page-kicker{font-size:calc(11px + var(--sw-font-adjust));color:var(--sw-accent-dark);font-weight:700;letter-spacing:.08em;margin-bottom:5px}.info-button{width:28px;height:28px;border:0;border-radius:50%;background:transparent;color:#7c7e74;display:grid;place-items:center;cursor:pointer;font-size:calc(15px + var(--sw-font-adjust));font-weight:700;line-height:1;flex:0 0 auto}.info-button:hover{background:var(--sw-accent-soft);color:var(--sw-accent-dark)}
 .card{border:1px solid var(--sw-line);background:var(--sw-card);border-radius:16px;padding:17px 18px;box-shadow:0 2px 10px rgba(66,64,53,.035)}.card.soft{background:#f8f7f0}.card h2{margin:0 0 8px;font-size:calc(16px + var(--sw-font-adjust));line-height:1.4;color:#282921}.card h3{margin:15px 0 8px;font-size:calc(14px + var(--sw-font-adjust));color:#303128}.card p{margin:7px 0;font-size:calc(13px + var(--sw-font-adjust));line-height:1.72;color:var(--sw-muted)}.card p strong{color:var(--sw-text)}.card-header{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}.card-header>div:first-child{flex:1;min-width:0}.card-header h2,.card-header h3{margin:0}.card-subtitle{font-size:calc(12px + var(--sw-font-adjust));color:var(--sw-muted);line-height:1.55;margin-top:3px}
 .overview{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}.overview-summary{font-size:calc(15px + var(--sw-font-adjust))!important;line-height:1.8!important;color:#3b3c33!important;margin:0!important}.overview-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.meta-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;background:var(--sw-accent-soft);color:var(--sw-accent-dark);font-size:calc(11.5px + var(--sw-font-adjust));font-weight:650}.meta-pill.neutral{background:#f0eee6;color:#686960}
 .status-grid{margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.status{padding:11px 12px;border:1px solid var(--sw-line-soft);border-radius:11px;background:#f8f7f1}.status b{display:block;font-size:calc(11px + var(--sw-font-adjust));color:#66685f;margin-bottom:4px;font-weight:650}.status span{font-size:calc(12.5px + var(--sw-font-adjust));line-height:1.5;color:#32342c;word-break:break-word}.status.compact{padding:9px 10px}
@@ -42,6 +69,7 @@ const STYLES = `
 .icon-action{width:32px;height:30px;border:0;background:transparent;color:#77796f;border-radius:7px;padding:5px;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}.icon-action:hover{background:#eeeae1;color:#4b4d43}.icon-action.danger:hover{background:var(--sw-danger-bg);color:var(--sw-danger)}.icon-action:disabled{opacity:.4;cursor:not-allowed}.icon-action svg{width:17px;height:17px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .person-tools{display:flex;align-items:center;gap:3px;margin-left:4px}.person-chevron{flex:0 0 auto;margin-left:2px}.person-card>summary .icon-action{position:relative;z-index:2}
 .settings-tabs{display:flex;gap:5px;overflow-x:auto;padding:4px;border-radius:12px;background:#e9e7de;scrollbar-width:none}.settings-tabs::-webkit-scrollbar{display:none}.settings-tabs button{flex:1 0 68px;min-height:38px;border:0;border-radius:9px;background:transparent;color:#6b6d63;font-weight:680;cursor:pointer;padding:8px 10px}.settings-tabs button[aria-selected="true"]{background:#fffef9;color:#31332b;box-shadow:0 1px 5px rgba(60,58,48,.08)}
+.font-scale-control{display:grid;grid-template-columns:46px minmax(100px,1fr) 46px;align-items:center;gap:10px;margin-top:12px}.font-scale-button{height:40px;border:1px solid #d2cfc1;border-radius:10px;background:#fffef9;color:#4d5147;cursor:pointer;font-size:calc(20px + var(--sw-font-adjust));line-height:1}.font-scale-button:hover{background:var(--sw-accent-soft);border-color:#bcc5b5}.font-scale-button:disabled{opacity:.4;cursor:not-allowed}.font-scale-value{height:40px;border:1px solid var(--sw-line-soft);border-radius:10px;background:#f7f5ed;display:grid;place-items:center;font-size:calc(14px + var(--sw-font-adjust));font-weight:720;color:#3d4036}
 .maintenance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.maintenance-item{border:1px solid var(--sw-line-soft);background:#faf9f4;border-radius:10px;padding:11px}.maintenance-item b{display:block;margin-bottom:4px}.maintenance-item p{margin:0 0 9px}.maintenance-item .action{width:100%;min-height:35px}
 .modal-layer{position:absolute;inset:0;z-index:120;background:rgba(48,48,42,.46);display:flex;align-items:center;justify-content:center;overflow:auto;overscroll-behavior:contain;padding:max(18px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}.modal-dialog{width:min(520px,92vw);max-height:calc(var(--sw-vv-height,100dvh) - 36px);overflow:auto;border:1px solid var(--sw-line);border-radius:17px;background:var(--sw-card);box-shadow:0 20px 60px rgba(42,42,36,.28);padding:18px;margin:auto}.modal-dialog.person-editor{width:min(590px,92vw)}.dialog-error{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--sw-danger-bg);color:var(--sw-danger);font-size:calc(11.5px + var(--sw-font-adjust));line-height:1.5}.dialog-error:empty{display:none}.modal-dialog h2{margin:0 0 6px;font-size:calc(17px + var(--sw-font-adjust));line-height:1.35;color:var(--sw-text)}.modal-dialog>p{margin:0 0 13px;color:var(--sw-muted);font-size:calc(12px + var(--sw-font-adjust));line-height:1.65}.modal-message{white-space:pre-wrap;word-break:break-word;color:#46483f;font-size:calc(12.5px + var(--sw-font-adjust));line-height:1.72;margin:8px 0 0}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}.modal-actions .action{min-width:86px}.modal-actions .action.danger-fill{background:var(--sw-danger);border-color:var(--sw-danger);color:#fff}.modal-actions .action.danger-fill:hover{background:#844742;border-color:#844742}.editor-field{display:block;margin-top:11px}.editor-field>span{display:block;font-size:calc(11px + var(--sw-font-adjust));color:var(--sw-muted);font-weight:650;margin-bottom:5px}.editor-field input,.editor-field textarea{width:100%;border:1px solid #d2cfc1;background:#fffef9;color:var(--sw-text);border-radius:9px;padding:9px 10px;outline:none}.editor-field textarea{min-height:92px;resize:vertical;line-height:1.55}.editor-field input:focus,.editor-field textarea:focus{border-color:#9eaa95;box-shadow:0 0 0 2px rgba(102,118,92,.10)}.editor-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
 @media(max-width:620px){.maintenance-grid{grid-template-columns:1fr}.modal-layer{padding:max(12px,env(safe-area-inset-top)) 10px max(12px,env(safe-area-inset-bottom))}.modal-dialog,.modal-dialog.person-editor{width:100%;max-height:calc(var(--sw-vv-height,100dvh) - 24px);border-radius:15px;padding:16px}.modal-actions,.editor-actions{position:sticky;bottom:-16px;background:linear-gradient(to top,var(--sw-card) 72%,rgba(255,254,249,0));padding:14px 0 2px;margin-top:12px}.card-header{align-items:flex-start}.card-header>.action{width:auto;flex:0 0 auto;min-width:70px;max-width:42%;white-space:nowrap}.settings-tabs button{flex-basis:64px}}
@@ -57,6 +85,9 @@ function iconSvg(name) {
 }
 function editIconButton(attrs='', disabled=false) { return `<button class="icon-action" type="button" title="修改" aria-label="修改" ${attrs} ${disabled?'disabled':''}>${iconSvg('edit')}</button>`; }
 function trashIconButton(attrs='', disabled=false) { return `<button class="icon-action danger" type="button" title="删除" aria-label="删除" ${attrs} ${disabled?'disabled':''}>${iconSvg('trash')}</button>`; }
+function helpButton(topic, label='查看说明') { return `<button class="info-button" type="button" data-help-topic="${escapeHtml(topic)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">ⓘ</button>`; }
+function fontScaleToAdjust(scale) { const value=Math.max(90,Math.min(125,Number(scale)||110)); return (value-100)/10; }
+function baiBaiStatusText(status) { return status?.available ? `已检测到柏宝书${status.pluginVersion?` · ${status.pluginVersion}`:''}` : '当前未检测到柏宝书公开接口；接口不可用时会自动跳过'; }
 function formatBytes(bytes){const n=Number(bytes)||0;if(n<1024)return`${n} B`;if(n<1024*1024)return`${(n/1024).toFixed(1)} KB`;return`${(n/1024/1024).toFixed(2)} MB`}
 function latestSyncText(state){
     const sync=state?.sync;
@@ -130,27 +161,22 @@ function worldReferenceSettingsHtml(actions, busy, entryChoices) {
             const encodedIds = escapeHtml(JSON.stringify(ids));
             return `<details class="book-picker" data-preserve-key="${escapeHtml(`${purpose}:${book.id||book.name}`)}" data-book-purpose="${purpose}" data-book-id="${escapeHtml(book.id||book.name)}"><summary><span data-book-name>${escapeHtml(book.name)}</span> · 已选 <span data-book-selected>${selectedInBook}</span> / <span data-book-total>${entries.length}</span> 条</summary><div class="book-tools"><button class="mini-setting-button" type="button" data-world-entry-batch="all" data-world-entry-purpose="${purpose}" data-world-entry-ids='${encodedIds}' ${busy||!entries.length?'disabled':''}>全选本书</button><button class="mini-setting-button" type="button" data-world-entry-batch="none" data-world-entry-purpose="${purpose}" data-world-entry-ids='${encodedIds}' ${busy||!entries.length?'disabled':''}>清空本书</button></div><div class="book-list">${rows}</div></details>`;
         }).join('');
-        return `<div class="note" data-entry-summary="${purpose}">${title}：已选 <span data-entry-selected>${selected}</span> / <span data-entry-total>${total}</span> 条。首次发现条目时，酒馆中“启用”的条目会默认勾选，酒馆中“关闭”的条目默认不勾选；之后以世界动态里的手动选择为准。无论酒馆当前是否触发，该条目都可以手动勾选或取消。</div>${groups}`;
+        return `<div class="note" data-entry-summary="${purpose}">${title}：已选 <span data-entry-selected>${selected}</span> / <span data-entry-total>${total}</span> 条。首次默认跟随酒馆启用状态，之后以这里的手动选择为准。</div>${groups}`;
     };
 
-    const baibaiText = status => status.available
-        ? `已检测到柏宝书${status.pluginVersion?` · ${escapeHtml(status.pluginVersion)}`:''}`
-        : '当前未检测到柏宝书公开接口；即使勾选，接口不可用时也会自动跳过';
-
-    return `<div class="card"><h2>世界观与长期参考</h2><p>世界推演和见闻分别选择自己要传输的世界书条目，不再按“整本世界书”全量发送。</p>
+    return `<div class="card"><div class="card-header"><div><h2>世界观与长期参考</h2><div class="card-subtitle">世界推演和见闻分别选择要传输的条目</div></div>${helpButton('reference','查看参考资料规则')}</div>
       <div class="section-title"><h3>世界推演参考</h3></div>
       <div class="setting-grid">
         <label class="setting-row"><input type="checkbox" data-world-ref-setting="includeCharacterDescription" ${descriptionChecked?'checked':''} ${busy?'disabled':''}><span><b>传输角色描述</b><small>只给世界推演使用；见闻不读取角色描述。</small></span></label>
-        <label class="setting-row"><input type="checkbox" data-world-ref-setting="simulationUseBaiBaiBook" ${settings.simulationUseBaiBaiBook===true?'checked':''} ${busy?'disabled':''}><span><b>世界推演使用柏宝书长期历史</b><small>${baibaiText(simulationBaiBai)}。默认最多 ${Number(settings.baibaiHistoryMaxChars)||8000} 字符。</small></span></label>
+        <label class="setting-row"><input type="checkbox" data-world-ref-setting="simulationUseBaiBaiBook" ${settings.simulationUseBaiBaiBook===true?'checked':''} ${busy?'disabled':''}><span><b>世界推演使用柏宝书长期历史</b><small><span data-baibai-status="simulation">${escapeHtml(baiBaiStatusText(simulationBaiBai))}</span>。默认最多 ${Number(settings.baibaiHistoryMaxChars)||8000} 字符。</small></span></label>
       </div>
       ${entryPicker(simulationBooks,'simulation','世界推演条目')}
 
       <div class="section-title"><h3>见闻参考</h3></div>
       <div class="setting-grid">
-        <label class="setting-row"><input type="checkbox" data-world-ref-setting="observationUseBaiBaiBook" ${settings.observationUseBaiBaiBook===true?'checked':''} ${busy?'disabled':''}><span><b>见闻使用柏宝书长期历史</b><small>${baibaiText(observationBaiBai)}。只用于理解较早背景，不会替代当前世界状态。</small></span></label>
+        <label class="setting-row"><input type="checkbox" data-world-ref-setting="observationUseBaiBaiBook" ${settings.observationUseBaiBaiBook===true?'checked':''} ${busy?'disabled':''}><span><b>见闻使用柏宝书长期历史</b><small><span data-baibai-status="observation">${escapeHtml(baiBaiStatusText(observationBaiBai))}</span>。只用于理解较早背景，不会替代当前世界状态。</small></span></label>
       </div>
       ${entryPicker(observationBooks,'observation','见闻条目')}
-      <div class="note">例如服装规则、NSFW 规则、状态栏格式等，如果不需要给世界动态，就取消勾选；趣味设定即使在酒馆里处于关闭状态，也可以只在“见闻”中手动勾选。世界动态调用模型时使用独立构造的提示词，不会自动把酒馆当前聊天正文、角色卡、世界书或普通聊天提示词再拼一遍。</div>
     </div>`;
 }
 
@@ -183,7 +209,7 @@ function homeHtml(version, preview, busy, actions) {
     const batch=preview?.batch;
     const canSimulate=!!batch?.canSimulate && !busy;
     return `<div class="stack">
-        <div class="page-intro"><div class="page-kicker">当前世界</div><h1>此刻</h1><p>先把剧情推演成清晰的当前世界，再从这里查看状态、人物与下一步。</p></div>
+        <div class="page-intro"><div class="page-kicker">当前世界</div><div class="page-title-row"><h1>此刻</h1>${helpButton('home')}</div><p>查看当前世界状态、剧情时间与下一步。</p></div>
         ${state?currentWorldHtml(state):`<div class="card soft"><h2>尚未建立当前世界</h2><p>第一次使用时，先读取待推演剧情并完成一次世界推演。旧聊天默认只从最近最多 10 条 AI 正文开始，不会回灌全部历史。</p></div>`}
         ${actionSuggestionsHtml(state,busy)}
         <div class="card"><div class="card-header"><div><h2>世界推演</h2><div class="card-subtitle">读取只在本地进行；真正推演时才调用一次模型</div></div>${busy?'<span class="meta-pill neutral">处理中</span>':''}</div><div class="status-grid"><div class="status compact"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status compact"><b>剧情时间</b><span>${escapeHtml(state?.sync?.lastProcessedStoryTime||state?.world?.time||'尚未识别')}</span></div><div class="status compact"><b>最近推演</b><span>${state?.sync?.lastProcessedAt?escapeHtml(timeLabel(state.sync.lastProcessedAt)):'尚未推演'}</span></div><div class="status compact"><b>当前数据</b><span>${info.dataExists?formatBytes(info.totalBytes):'尚未创建'}</span></div></div><div class="actions"><button class="action" type="button" data-action="read-pending" ${busy?'disabled':''}>读取待推演剧情</button><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>推演本批剧情</button></div>${pendingPreviewHtml(preview)}</div>
@@ -196,8 +222,8 @@ function modelSettingsHtml() {
 }
 function appearanceSettingsHtml(actions, busy) {
     const settings=actions?.getSettings?.()??{};
-    const value=Math.max(-1,Math.min(2,Math.trunc(Number(settings.uiFontAdjust)||0)));
-    return `<div class="card"><h2>外观</h2><p>保持暖色浅背景与深色文字，仅调整世界动态界面的文字大小。</p><label><span class="meta">字体大小</span><select class="setting-text" data-font-adjust ${busy?'disabled':''}><option value="-1" ${value===-1?'selected':''}>较小</option><option value="0" ${value===0?'selected':''}>标准</option><option value="1" ${value===1?'selected':''}>舒适（推荐）</option><option value="2" ${value===2?'selected':''}>较大</option></select></label><div class="note">只影响世界动态界面，不会修改酒馆全局字号。</div></div>`;
+    const value=Math.max(90,Math.min(125,Math.round((Number(settings.uiFontScale)||110)/5)*5));
+    return `<div class="card"><h2>外观</h2><p>保持暖色浅背景与深色文字，字号只影响世界动态本身。</p><div class="font-scale-control"><button class="font-scale-button" type="button" data-font-scale-step="-5" ${busy||value<=90?'disabled':''}>−</button><div class="font-scale-value" data-font-scale-value>${value}%</div><button class="font-scale-button" type="button" data-font-scale-step="5" ${busy||value>=125?'disabled':''}>＋</button></div><div class="note">可在 90%～125% 之间按 5% 调整，不会修改酒馆全局字号。</div></div>`;
 }
 function dataMaintenanceSettingsHtml(busy) {
     const info=inspectSceneWorldStorage();
@@ -224,7 +250,7 @@ function settingsHtml(actions, busy, entryChoices, activeSettingsView='simulatio
 function peopleHtml(state, busy) {
     if (!state) return emptySection('人物');
     const items = Array.isArray(state.people) ? state.people : [];
-    const intro=`<div class="page-intro"><div class="page-kicker">人物状态</div><div class="card-header"><div><h1>人物</h1><p>查看人物当前处境；识别错误或遗漏时可以手动修改、增加或删除。</p></div><button class="action" type="button" data-add-person ${busy?'disabled':''}>＋ 添加人物</button></div></div>`;
+    const intro=`<div class="page-intro"><div class="page-kicker">人物状态</div><div class="card-header"><div><div class="page-title-row"><h1>人物</h1>${helpButton('people')}</div><p>查看人物当前位置；需要时可手动维护。</p></div><button class="action" type="button" data-add-person ${busy?'disabled':''}>＋ 添加人物</button></div></div>`;
     if (!items.length) return `<div class="stack">${intro}<div class="card"><p class="empty">当前没有人物状态，可以等待世界推演识别，也可以手动添加。</p></div></div>`;
     return `<div class="stack">${intro}<div class="item-list">${items.map(person=>{
         const details=Array.isArray(person.details)?person.details:[];
@@ -272,7 +298,7 @@ function opinionHtml(state, busy, actions, activeView='public') {
     const streetView=`<div class="card"><div class="card-header"><div><h2>街巷漫游</h2><div class="card-subtitle">每次生成生活化市井闲闻与 3～5 个可探索地点</div></div><button class="action primary" type="button" data-action="refresh-street" ${(busy||!simulationReady)?'disabled':''}>漫游</button></div>${simulationReady?'':'<div class="note warning">请先完成至少一次世界推演，建立当前世界状态。</div>'}<div class="overview-meta"><span class="meta-pill neutral">上次 ${escapeHtml(timeLabel(opinion.streetUpdatedAt))}</span></div><div class="note">市井闲闻属于生活化衍生内容，不会自动写入世界事实；“去哪逛逛”属于探索建议，也不会自动变成已经发生的剧情。</div></div>
       <div class="card"><div class="section-title"><h3>市井闲闻</h3><span class="count">${street.length} 条</span></div>${street.length?`<div class="item-list">${street.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title)}</b>${favoriteButton(state,'street',item.id,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.category||streetKindLabel(item.kind))}</span><span class="chip">${escapeHtml(streetKindLabel(item.kind))}</span></div>${item.speaker||item.place?`<div class="street-meta">${item.speaker?escapeHtml(item.speaker):escapeHtml(streetKindLabel(item.kind))}${item.place?` · ${escapeHtml(item.place)}`:''}</div>`:''}<div class="quote">${item.speaker?`“${escapeHtml(item.text)}”`:`【${escapeHtml(item.text)}】`}</div>${item.note&&item.note!==item.text?`<p>${escapeHtml(item.note)}</p>`:''}</div>`).join('')}</div>`:'<p class="empty">还没有生成市井闲闻。</p>'}</div>
       <div class="card"><div class="section-title"><h3>去哪逛逛</h3><span class="count">${places.length} 条</span></div>${places.length?`<div class="item-list">${places.map(item=>`<div class="item"><div class="item-head"><div style="flex:1;min-width:0"><b>${escapeHtml(item.name)}</b>${item.why?`<p>${escapeHtml(item.why)}</p>`:''}<div class="chips">${item.type?`<span class="chip">${escapeHtml(item.type)}</span>`:''}<span class="chip">${item.established?'已有地点':'灵感地点'}</span></div></div><button class="insert-small icon-only" type="button" title="填入输入框" aria-label="填入输入框" data-insert-guidance="${escapeHtml(item.id)}" data-guidance-kind="place" ${busy?'disabled':''}>↪</button></div></div>`).join('')}</div>`:'<p class="empty">还没有生成地点推荐。</p>'}</div>`;
-    return `<div class="stack"><div class="page-intro"><div class="page-kicker">世界见闻</div><h1>见闻</h1><p>世界推演之后，再从公共讨论或街巷生活两个角度看看镜头外的世界。</p><div class="segmented" role="tablist" aria-label="见闻类型"><button type="button" data-opinion-view="public" aria-selected="${activeView==='public'}">公共动态</button><button type="button" data-opinion-view="street" aria-selected="${activeView==='street'}">街巷漫游</button></div></div>${activeView==='street'?streetView:publicView}<div class="note"><div class="tip"><span class="tip-mark">i</span><span>见闻不读取原始剧情正文，只使用世界推演后的当前状态、最近动态、持续性事实，以及设置中单独选择的见闻参考。</span></div></div></div>`;
+    return `<div class="stack"><div class="page-intro"><div class="page-kicker">世界见闻</div><div class="page-title-row"><h1>见闻</h1>${helpButton('observation')}</div><p>从公共动态和街巷漫游两个角度查看镜头外的信息。</p><div class="segmented" role="tablist" aria-label="见闻类型"><button type="button" data-opinion-view="public" aria-selected="${activeView==='public'}">公共动态</button><button type="button" data-opinion-view="street" aria-selected="${activeView==='street'}">街巷漫游</button></div></div>${activeView==='street'?streetView:publicView}</div>`;
 }
 
 function continuityHtml(state, busy, actions) {
@@ -283,7 +309,7 @@ function continuityHtml(state, busy, actions) {
     const publicityLabel=value=>({private:'私有',trace:'公开迹象',public:'公开事实'}[value]||'私有');
     const validityLabel=value=>({current:'当前',upcoming:'将发生',historical:'历史',persistent:'持续'}[value]||value||'当前');
     const sortedFacts=facts.sort((a,b)=>String(b?.updatedAt||'').localeCompare(String(a?.updatedAt||''))||(b?.sourceMessageId??-1)-(a?.sourceMessageId??-1));
-    return `<div class="stack"><div class="page-intro"><div class="page-kicker">连续脉络</div><h1>脉络</h1><p>只保留最近 5 次世界变化和仍然有效的持续性事实，让长期聊天保持轻量。</p></div>
+    return `<div class="stack"><div class="page-intro"><div class="page-kicker">连续脉络</div><div class="page-title-row"><h1>脉络</h1>${helpButton('continuity')}</div><p>最近 5 次世界变化与仍然有效的持续性事实。</p></div>
       <div class="card"><div class="card-header"><div><h2>持续性世界事实</h2><div class="card-subtitle">后续推演会把这里当作连续性约束；识别错误时可以手动修改或删除</div></div><span class="meta-pill neutral">${facts.length} / 20</span></div>${sortedFacts.length?`<div class="item-list">${sortedFacts.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.value||item.key||'持续性世界事实')}</b><div class="mini-actions">${editIconButton(`data-edit-continuity-fact="${escapeHtml(item.id)}"`,busy)}${trashIconButton(`data-remove-continuity-fact="${escapeHtml(item.id)}"`,busy)}</div></div><div class="chips">${item.key?`<span class="chip">${escapeHtml(item.key)}</span>`:''}<span class="chip">${escapeHtml(validityLabel(item.validity))}</span><span class="chip">${escapeHtml(publicityLabel(item.publicity))}</span>${item.source==='manual'?'<span class="chip">手动修正</span>':''}</div>${item.publicHint?`<p>公开表象：${escapeHtml(item.publicHint)}</p>`:''}${item.evidence?`<details class="preview-details"><summary>查看依据</summary><div class="note">${escapeHtml(item.evidence)}</div></details>`:''}<div class="meta">${escapeHtml([sourceLabel(item),item.updatedAt?`更新：${timeLabel(item.updatedAt)}`:''].filter(Boolean).join(' · '))}</div></div>`).join('')}</div>`:'<p class="empty">当前没有需要长期占用额度的持续性世界事实。</p>'}</div>
       <div class="card"><div class="card-header"><div><h2>最近世界动态</h2><div class="card-subtitle">只保留最近 5 次世界推演的净变化摘要</div></div><span class="meta-pill neutral">${recent.length} / 5</span></div>${recent.length?`<div class="timeline">${recent.map(item=>`<div class="timeline-row"><span class="timeline-dot"></span><div class="timeline-body"><b>${escapeHtml(item.summary)}</b><div class="meta">${escapeHtml([item.storyTime?`剧情时间：${item.storyTime}`:'',sourceLabel(item),item.createdAt?`推演于：${timeLabel(item.createdAt)}`:''].filter(Boolean).join(' · '))}</div></div></div>`).join('')}</div>`:'<p class="empty">当前还没有最近世界动态。</p>'}</div>
     </div>`;
@@ -291,7 +317,7 @@ function continuityHtml(state, busy, actions) {
 function chronicleHtml(state, busy) {
     if (!state) return emptySection('纪事');
     const items=Array.isArray(state.chronicle)?[...state.chronicle].reverse():[];
-    return `<div class="stack"><div class="page-intro"><div class="page-kicker">收藏归档</div><h1>纪事</h1><p>把值得保留的新闻、讨论与灵感收进这里。收藏不会自动变成世界事实。</p></div>${!items.length?`<div class="card"><p class="empty">暂无收藏。见闻卡片右上角的 ☆ 可以把喜欢的内容保留下来。</p></div>`:`<div class="card"><div class="card-header"><div><h2>收藏</h2><div class="card-subtitle">刷新见闻不会删除这些内容</div></div><span class="meta-pill neutral">${items.length} 条</span></div><div class="item-list">${items.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title||'收藏内容')}</b>${trashIconButton(`data-remove-chronicle="${escapeHtml(item.id)}"`,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.sourceLabel||item.sourceType||'收藏')}</span>${item.canon===false?'<span class="chip">灵感来源</span>':'<span class="chip">正史来源</span>'}</div>${item.summary?`<p>${escapeHtml(item.summary)}</p>`:''}<div class="meta">收藏于 ${escapeHtml(timeLabel(item.capturedAt))}</div></div>`).join('')}</div></div>`}</div>`;
+    return `<div class="stack"><div class="page-intro"><div class="page-kicker">收藏归档</div><div class="page-title-row"><h1>纪事</h1>${helpButton('chronicle')}</div><p>收藏值得保留的见闻与灵感。</p></div>${!items.length?`<div class="card"><p class="empty">暂无收藏。见闻卡片右上角的 ☆ 可以把喜欢的内容保留下来。</p></div>`:`<div class="card"><div class="card-header"><div><h2>收藏</h2><div class="card-subtitle">刷新见闻不会删除这些内容</div></div><span class="meta-pill neutral">${items.length} 条</span></div><div class="item-list">${items.map(item=>`<div class="item"><div class="item-head"><b>${escapeHtml(item.title||'收藏内容')}</b>${trashIconButton(`data-remove-chronicle="${escapeHtml(item.id)}"`,busy)}</div><div class="chips"><span class="chip">${escapeHtml(item.sourceLabel||item.sourceType||'收藏')}</span>${item.canon===false?'<span class="chip">灵感来源</span>':'<span class="chip">正史来源</span>'}</div>${item.summary?`<p>${escapeHtml(item.summary)}</p>`:''}<div class="meta">收藏于 ${escapeHtml(timeLabel(item.capturedAt))}</div></div>`).join('')}</div></div>`}</div>`;
 }
 
 function emptySection(title){return`<div class="stack"><div class="page-intro"><h1>${escapeHtml(title)}</h1><p>当前聊天尚未建立世界动态数据。</p></div><div class="card soft"><p>先到“此刻”完成一次世界推演。仅查看页面不会自动创建数据。</p></div></div>`}
@@ -300,7 +326,7 @@ function renderTab(tab,version,preview,busy,actions,opinionView){const state=rea
 function countReportedChanges(summary){if(!summary)return 0;return (summary.worldPatch?1:0)+(summary.momentsUpsert||0)+(summary.momentsRemove||0)+(summary.factsUpsert||0)+(summary.factsRemove||0)+(summary.people||0)+(summary.recentDynamic?1:0)}
 
 export function createSceneWorldShell({ version, onClose, actions }) {
-    let host=document.getElementById(HOST_ID);if(host)host.remove();host=document.createElement('div');host.id=HOST_ID;const shadow=host.attachShadow({mode:'open'});let activeTab='此刻';let activeOpinionView='public';let activeSettingsView='simulation';let settingsOpen=false;let busy=false;let preview=null;let worldEntryChoices={simulation:null,observation:null};
+    let host=document.getElementById(HOST_ID);if(host)host.remove();host=document.createElement('div');host.id=HOST_ID;const shadow=host.attachShadow({mode:'open'});let activeTab='此刻';let activeOpinionView='public';let activeSettingsView='simulation';let settingsOpen=false;let busy=false;let preview=null;let worldEntryChoices={simulation:null,observation:null};let worldEntryLoadVersion=0;
     const captureViewState=()=>{
         const content=shadow.querySelector('.content');
         const openDetails=[...shadow.querySelectorAll('details[data-preserve-key][open]')].map(item=>item.dataset.preserveKey).filter(Boolean);
@@ -364,9 +390,45 @@ export function createSceneWorldShell({ version, onClose, actions }) {
             const totalNode=summary.querySelector('[data-entry-total]');if(totalNode)totalNode.textContent=String(total);
         }
     };
-    const applyFontAdjust=value=>{
+    const applyFontScale=scale=>{
+        const value=Math.max(90,Math.min(125,Math.round((Number(scale)||110)/5)*5));
         const backdrop=shadow.querySelector('.backdrop');
-        if(backdrop)backdrop.style.setProperty('--sw-font-adjust',`${value}px`);
+        if(backdrop)backdrop.style.setProperty('--sw-font-adjust',`${fontScaleToAdjust(value)}px`);
+        const label=shadow.querySelector('[data-font-scale-value]');
+        if(label)label.textContent=`${value}%`;
+        shadow.querySelectorAll('[data-font-scale-step]').forEach(button=>{
+            const step=Number(button.dataset.fontScaleStep)||0;
+            button.disabled=busy||(step<0&&value<=90)||(step>0&&value>=125);
+        });
+    };
+    const syncBaiBaiStatus=()=>{
+        for(const purpose of ['simulation','observation']){
+            const node=shadow.querySelector(`[data-baibai-status="${purpose}"]`);
+            if(!node)continue;
+            const status=actions?.getBaiBaiStatus?.(purpose)??{};
+            node.textContent=baiBaiStatusText(status);
+        }
+    };
+    const ensureWorldEntriesLoaded=()=>{
+        if(worldEntryChoices.simulation!==null&&worldEntryChoices.observation!==null)return Promise.resolve(worldEntryChoices);
+        const loadVersion=worldEntryLoadVersion;
+        return runBusy(async()=>{
+            try{
+                const [simulation,observation]=await Promise.all([
+                    actions?.getWorldEntries?.('simulation'),
+                    actions?.getWorldEntries?.('observation'),
+                ]);
+                if(loadVersion!==worldEntryLoadVersion)return worldEntryChoices;
+                worldEntryChoices={simulation:simulation??[],observation:observation??[]};
+                return worldEntryChoices;
+            }catch(error){
+                if(loadVersion!==worldEntryLoadVersion)return worldEntryChoices;
+                console.error('[SceneWorld] world entry list load failed',error);
+                worldEntryChoices={simulation:[],observation:[]};
+                notify(`读取世界书内部条目失败：${error?.message||error}`,'error');
+                return worldEntryChoices;
+            }
+        });
     };
     const render=(options={})=>{
         if(dialogs.active)dialogs.cancelActive(null);
@@ -376,18 +438,19 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         const settingsButtonIcon=settingsOpen?'←':'⚙';
         const mainHtml=settingsOpen?settingsHtml(actions,busy,worldEntryChoices,activeSettingsView):renderTab(activeTab,version,preview,busy,actions,activeOpinionView);
         const navHtml=settingsOpen?'':`<nav class="nav" aria-label="世界动态栏目">${TABS.map(tab=>`<button type="button" data-tab="${tab}" aria-selected="${tab===activeTab}">${tab}</button>`).join('')}</nav>`;
-        const fontAdjust=Math.max(-1,Math.min(2,Math.trunc(Number(actions?.getSettings?.()?.uiFontAdjust)||0)));shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop" style="--sw-font-adjust:${fontAdjust}px"><section class="panel" role="dialog" aria-modal="true" aria-label="${settingsOpen?'世界动态设置':'世界动态'}"><header class="header"><div class="title">${pageTitle}</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="header-icon" type="button" data-action="settings-toggle" aria-label="${settingsButtonLabel}" title="${settingsButtonLabel}">${settingsButtonIcon}</button><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${mainHtml}</main>${navHtml}</section></div>`;
+        const fontScale=Math.max(90,Math.min(125,Math.round((Number(actions?.getSettings?.()?.uiFontScale)||110)/5)*5));const fontAdjust=fontScaleToAdjust(fontScale);shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop" style="--sw-font-adjust:${fontAdjust}px"><section class="panel" role="dialog" aria-modal="true" aria-label="${settingsOpen?'世界动态设置':'世界动态'}"><header class="header"><div class="title">${pageTitle}</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="header-icon" type="button" data-action="settings-toggle" aria-label="${settingsButtonLabel}" title="${settingsButtonLabel}">${settingsButtonIcon}</button><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${mainHtml}</main>${navHtml}</section></div>`;
         restoreViewState(viewState);
         shadow.querySelector('.close')?.addEventListener('click',()=>onClose?.());
-        shadow.querySelector('[data-action="settings-toggle"]')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;render({preserve:false});if(settingsOpen&&(worldEntryChoices.simulation===null||worldEntryChoices.observation===null)){runBusy(async()=>{try{worldEntryChoices={simulation:await actions?.getWorldEntries?.('simulation')??[],observation:await actions?.getWorldEntries?.('observation')??[]}}catch(error){console.error('[SceneWorld] world entry list load failed',error);worldEntryChoices={simulation:[],observation:[]};notify(`读取世界书内部条目失败：${error?.message||error}`,'error')}})}});
+        shadow.querySelector('[data-action="settings-toggle"]')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;render({preserve:false});if(settingsOpen&&activeSettingsView==='reference')void ensureWorldEntriesLoaded()});
         shadow.querySelector('.backdrop')?.addEventListener('click',e=>{if(e.target===e.currentTarget)onClose?.()});
         shadow.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{settingsOpen=false;activeTab=button.dataset.tab||'此刻';render({preserve:false})}));
         shadow.querySelectorAll('[data-opinion-view]').forEach(button=>button.addEventListener('click',()=>{activeOpinionView=button.dataset.opinionView==='street'?'street':'public';render({preserve:false})}));
-        shadow.querySelectorAll('[data-settings-view]').forEach(button=>button.addEventListener('click',()=>{activeSettingsView=button.dataset.settingsView||'simulation';render({preserve:false})}));
+        shadow.querySelectorAll('[data-settings-view]').forEach(button=>button.addEventListener('click',()=>{activeSettingsView=button.dataset.settingsView||'simulation';render({preserve:false});if(activeSettingsView==='reference')void ensureWorldEntriesLoaded()}));
         shadow.querySelectorAll('[data-world-ref-setting]').forEach(input=>input.addEventListener('change',()=>{try{actions?.updateSettings?.({[input.dataset.worldRefSetting]:input.checked});notify('世界观参考设置已保存','success')}catch(error){console.error('[SceneWorld] settings update failed',error);notify(`保存世界观参考设置失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-world-entry]').forEach(input=>input.addEventListener('change',()=>{try{const purpose=input.dataset.worldEntryPurpose||'simulation';actions?.updateSettings?.({worldEntryId:input.dataset.worldEntry,worldEntryPurpose:purpose,worldEntryEnabled:input.checked});for(const book of worldEntryChoices[purpose]||[]){const entry=(book.entries||[]).find(item=>item.id===input.dataset.worldEntry);if(entry)entry.enabled=input.checked}syncWorldEntryCounts(purpose);notify(`${purpose==='observation'?'见闻':'世界推演'}世界书条目选择已保存`,'success')}catch(error){console.error('[SceneWorld] world entry setting failed',error);notify(`保存世界书条目选择失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-world-entry-batch]').forEach(button=>button.addEventListener('click',()=>{try{const purpose=button.dataset.worldEntryPurpose||'simulation';const ids=JSON.parse(button.dataset.worldEntryIds||'[]');const enabled=button.dataset.worldEntryBatch==='all';actions?.updateSettings?.({worldEntryIds:ids,worldEntryPurpose:purpose,worldEntryEnabled:enabled});for(const book of worldEntryChoices[purpose]||[]){for(const entry of book.entries||[]){if(ids.includes(entry.id))entry.enabled=enabled}}const detail=button.closest('details');detail?.querySelectorAll('[data-world-entry]').forEach(input=>{input.checked=enabled});syncWorldEntryCounts(purpose);notify(`${enabled?'已全选':'已清空'}这本世界书的 ${purpose==='observation'?'见闻':'世界推演'}条目`,'success')}catch(error){console.error('[SceneWorld] world entry batch setting failed',error);notify(`批量保存世界书条目失败：${error?.message||error}`,'error')}}));
-        shadow.querySelector('[data-font-adjust]')?.addEventListener('change',event=>{try{const value=Math.max(-1,Math.min(2,Math.trunc(Number(event.currentTarget?.value)||0)));actions?.updateSettings?.({uiFontAdjust:value});applyFontAdjust(value);notify('字体大小已保存','success')}catch(error){console.error('[SceneWorld] font setting failed',error);notify(`保存字体大小失败：${error?.message||error}`,'error')}});
+        shadow.querySelectorAll('[data-font-scale-step]').forEach(button=>button.addEventListener('click',()=>{try{const current=Math.max(90,Math.min(125,Math.round((Number(actions?.getSettings?.()?.uiFontScale)||110)/5)*5));const step=Number(button.dataset.fontScaleStep)||0;const value=Math.max(90,Math.min(125,current+step));actions?.updateSettings?.({uiFontScale:value});applyFontScale(value);notify(`世界动态字号已调整为 ${value}%`,'success')}catch(error){console.error('[SceneWorld] font setting failed',error);notify(`保存字体大小失败：${error?.message||error}`,'error')}}));
+        shadow.querySelectorAll('[data-help-topic]').forEach(button=>button.addEventListener('click',()=>{const topic=HELP_TOPICS[button.dataset.helpTopic];if(topic)void dialogs.info({title:topic.title,message:topic.message})}));
         shadow.querySelector('[data-content-tags]')?.addEventListener('change',event=>{try{const value=String(event.currentTarget?.value??'').trim();actions?.updateSettings?.({contentTags:value});preview=null;notify('正文标签设置已保存','success')}catch(error){console.error('[SceneWorld] content tag settings update failed',error);notify(`保存正文标签失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-pending-batch-size]')?.addEventListener('change',event=>{try{const size=Number(event.currentTarget?.value)===5?5:10;actions?.updateSettings?.({maxPendingAssistantMessages:size});preview=null;notify(`单批推演已设为最多 ${size} 条 AI 正文`,'success')}catch(error){console.error('[SceneWorld] batch size setting failed',error);notify(`保存推演批次失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-initial-settlement-mode]')?.addEventListener('change',event=>{try{const mode=String(event.currentTarget?.value??'latest')==='from_floor'?'from_floor':'latest';actions?.updateSettings?.({initialSettlementMode:mode});preview=null;const wrap=shadow.querySelector('[data-initial-start-floor-wrap]');if(wrap)wrap.hidden=mode!=='from_floor';notify(mode==='from_floor'?'首次推演起点已切换为从指定楼层开始':'首次推演起点已切换为从当前开始','success')}catch(error){console.error('[SceneWorld] initial settlement mode failed',error);notify(`保存首次推演起点失败：${error?.message||error}`,'error')}});
@@ -704,7 +767,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         });
     };
     shadow.addEventListener('keydown',event=>{if(event.key==='Escape'){if(dialogs.active)return;event.stopPropagation();if(settingsOpen){settingsOpen=false;render();return}onClose?.();return}const target=event.target;if(target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable))event.stopPropagation()});
-    document.body.appendChild(host);viewport.start();render();return{host,refresh:render,onChatChanged(){dialogs.cancelActive(null);preview=null;worldEntryChoices={simulation:null,observation:null};render()},onBaiBaiReady(){if(settingsOpen&&activeSettingsView==='reference')render()},destroy(){dialogs.destroy();viewport.stop();host?.remove()}};
+    document.body.appendChild(host);viewport.start();render();return{host,refresh:render,onChatChanged(){dialogs.cancelActive(null);preview=null;worldEntryLoadVersion+=1;worldEntryChoices={simulation:null,observation:null};render();if(settingsOpen&&activeSettingsView==='reference')void ensureWorldEntriesLoaded()},onBaiBaiReady(){syncBaiBaiStatus()},destroy(){dialogs.destroy();viewport.stop();host?.remove()}};
 }
 
 export function removeSceneWorldShell(){document.getElementById(HOST_ID)?.remove()}
