@@ -2,7 +2,7 @@ import { createEmptySceneWorldState } from '../data/sceneworld-schema.js';
 import { commitSceneWorldState, readSceneWorldState } from '../data/sceneworld-store.js';
 import { buildManualSimulationMessages } from '../engine/sceneworld-prompts.js';
 import { applySimulationPayload, parseSimulationResponse, summarizeSimulationPayload } from '../engine/simulation-result.js';
-import { generateWithCurrentConnection, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { generateSceneWorldText, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 import { readPendingNarrativeBatch } from './narrative-reader.js';
@@ -59,7 +59,7 @@ export async function simulatePendingNarrative(expectedBatch = null) {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
+    const raw = await generateSceneWorldText(messages, { responseLength: 2200 });
     const payload = parseSimulationResponse(raw);
     const changeSummary = summarizeSimulationPayload(payload);
     const source = batchSource(batch);

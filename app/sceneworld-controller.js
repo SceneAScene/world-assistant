@@ -1,7 +1,7 @@
 import { EventManager } from './event-manager.js';
 import { TaskManager } from './task-manager.js';
 import { clearSceneWorldSection, inspectSceneWorldStorage } from '../data/sceneworld-store.js';
-import { getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { fetchCustomApiModels, getSceneWorldEventApi, getSceneWorldSettings, putTextIntoChatInput, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { getCurrentWorldEntryChoices } from '../platform/world-reference.js';
 import { inspectPendingNarrative, simulatePendingNarrative } from '../services/world-simulation.js';
 import { inspectPublicOpinion, refreshCanonicalPublicOpinion, refreshStreetPublicOpinion } from '../services/public-opinion.js';
@@ -66,6 +66,7 @@ export function createSceneWorldController({ version }) {
                 getSettings: getSceneWorldSettings,
                 getWorldEntries: getCurrentWorldEntryChoices,
                 updateSettings: updateSceneWorldSettings,
+                fetchCustomApiModels: config => tasks.run('custom-api-models', () => fetchCustomApiModels(config)),
                 favoriteOpinion: (sourceType, sourceId) => tasks.run(`favorite:${sourceType}:${sourceId}`, () => favoriteOpinionItem(sourceType, sourceId)),
                 removeChronicle: id => tasks.run(`chronicle-remove:${id}`, () => removeChronicleItem(id)),
                 getBaiBaiStatus: getBaiBaiBookStatus,

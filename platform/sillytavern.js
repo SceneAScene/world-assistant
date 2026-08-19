@@ -28,6 +28,12 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     baibaiHistoryMaxChars: 8000,
     // 世界动态独立界面字号比例。90%～125%，每次 5%。
     uiFontScale: 110,
+    // 模型连接：默认复用酒馆当前连接；也可切换到独立 OpenAI 兼容 API。
+    modelConnectionMode: 'tavern', // 'tavern' | 'custom'
+    customApiUrl: '',
+    customApiKey: '',
+    customApiModel: '',
+    customApiTimeoutSec: 180,
 });
 
 function normalizeContentTagName(value) {
@@ -142,6 +148,11 @@ export function getSceneWorldSettings() {
             }
             return DEFAULT_SCENEWORLD_SETTINGS.uiFontScale;
         })(),
+        modelConnectionMode: String(merged.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern',
+        customApiUrl: String(merged.customApiUrl || '').trim(),
+        customApiKey: String(merged.customApiKey || ''),
+        customApiModel: String(merged.customApiModel || '').trim(),
+        customApiTimeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(merged.customApiTimeoutSec) || DEFAULT_SCENEWORLD_SETTINGS.customApiTimeoutSec))),
     };
 }
 
@@ -163,6 +174,7 @@ export function updateSceneWorldSettings(patch) {
         ['baibaiHistoryMaxChars', 2000, 20000],
         ['maxPendingAssistantMessages', 1, 10],
         ['uiFontScale', 90, 125],
+        ['customApiTimeoutSec', 30, 600],
     ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }
@@ -177,6 +189,12 @@ export function updateSceneWorldSettings(patch) {
     }
     if ('initialStartFloor' in patch && Number.isFinite(Number(patch.initialStartFloor))) {
         next.initialStartFloor = Math.max(0, Math.trunc(Number(patch.initialStartFloor)));
+    }
+    if ('modelConnectionMode' in patch) {
+        next.modelConnectionMode = String(patch.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern';
+    }
+    for (const key of ['customApiUrl', 'customApiKey', 'customApiModel']) {
+        if (key in patch) next[key] = String(patch[key] ?? '').trim();
     }
 
     const normalizeIncomingSelection = value => {
@@ -309,6 +327,119 @@ export async function generateWithCurrentConnection(messages, { responseLength =
     const text = String(result ?? '').trim();
     if (!text) throw new Error('模型没有返回内容，请检查 SillyTavern 当前连接与模型设置');
     return text;
+}
+
+function normalizeCustomApiUrl(value) {
+    const raw = String(value ?? '').trim().replace(/\/+$/, '');
+    if (!raw) return '';
+    if (/\/chat\/completions$/i.test(raw)) return raw.replace(/\/chat\/completions$/i, '');
+    if (/^https?:\/\/[^/?#]+$/i.test(raw)) return `${raw}/v1`;
+    return raw;
+}
+
+function extractCustomCompletion(data) {
+    const choice = data?.choices?.[0];
+    const content = choice?.message?.content ?? choice?.text ?? data?.content ?? data?.response;
+    if (typeof content === 'string') return content.trim();
+    if (Array.isArray(content)) {
+        return content.map(item => typeof item === 'string' ? item : (item?.text ?? item?.content ?? '')).join('').trim();
+    }
+    return '';
+}
+
+function mapCustomApiError(status, raw) {
+    const text = String(raw ?? '').trim();
+    if (status === 400) return `请求参数不兼容（400）：${text.slice(0, 140) || '请检查模型名称或接口兼容性'}`;
+    if (status === 401 || status === 403) return 'API Key 无效或当前 Key 没有权限（401/403）';
+    if (status === 404) return '接口地址不正确（404）。请检查 Base URL，通常应填写到 /v1';
+    if (status === 429) return '接口触发限流（429），请稍后再试';
+    if (status >= 500) return `上游服务暂时异常（${status}），请稍后再试`;
+    return text ? `HTTP ${status}: ${text.slice(0, 160)}` : `HTTP ${status}`;
+}
+
+async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
+    if (!Array.isArray(messages) || messages.length === 0) throw new Error('生成请求没有可用提示词');
+    const settings = getSceneWorldSettings();
+    const url = normalizeCustomApiUrl(settings.customApiUrl);
+    const key = String(settings.customApiKey || '').trim();
+    const model = String(settings.customApiModel || '').trim();
+    if (!url || !key || !model) throw new Error('自定义 API 尚未配置完整，请在“设置 → 模型”填写地址、Key 和模型名称');
+    const context = getContextSafe();
+    if (!context?.getRequestHeaders) throw new Error('当前 SillyTavern 版本未提供代理请求头接口');
+    const controller = new AbortController();
+    const timeoutSec = Math.max(30, Math.min(600, Number(settings.customApiTimeoutSec) || 180));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, timeoutSec * 1000);
+    try {
+        const body = {
+            chat_completion_source: 'openai',
+            reverse_proxy: url,
+            proxy_password: key,
+            model,
+            messages,
+            stream: false,
+            max_tokens: Math.max(256, Math.min(32000, Math.trunc(Number(responseLength) || 1800))),
+        };
+        const res = await fetch('/api/backends/chat-completions/generate', {
+            method: 'POST',
+            headers: context.getRequestHeaders(),
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        });
+        if (!res.ok) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(mapCustomApiError(res.status, raw));
+        }
+        const data = await res.json();
+        if (data?.error) throw new Error(String(data.error?.message || data.error));
+        const content = extractCustomCompletion(data);
+        if (!content) throw new Error('自定义 API 没有返回可用内容');
+        return content;
+    } catch (error) {
+        if (timedOut) throw new Error(`自定义 API 请求超时（超过 ${timeoutSec} 秒）`);
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+export async function generateSceneWorldText(messages, options = {}) {
+    const settings = getSceneWorldSettings();
+    if (settings.modelConnectionMode === 'custom') {
+        return generateWithCustomApi(messages, options);
+    }
+    return generateWithCurrentConnection(messages, options);
+}
+
+export async function fetchCustomApiModels({ url, key } = {}) {
+    const base = normalizeCustomApiUrl(url);
+    const apiKey = String(key ?? '').trim();
+    if (!base || !apiKey) throw new Error('请先填写 API 地址和 Key');
+    const context = getContextSafe();
+    if (!context?.getRequestHeaders) throw new Error('当前 SillyTavern 版本未提供模型列表代理接口');
+    const res = await fetch('/api/backends/chat-completions/status', {
+        method: 'POST',
+        headers: context.getRequestHeaders(),
+        body: JSON.stringify({
+            chat_completion_source: 'openai',
+            reverse_proxy: base,
+            proxy_password: apiKey,
+        }),
+    });
+    if (!res.ok) {
+        const raw = await res.text().catch(() => '');
+        throw new Error(mapCustomApiError(res.status, raw));
+    }
+    const data = await res.json();
+    if (data?.error) throw new Error(String(data.error?.message || data.error));
+    const models = (data?.data || data?.models || [])
+        .map(item => typeof item === 'string' ? item : item?.id)
+        .map(item => String(item ?? '').trim())
+        .filter(Boolean);
+    return [...new Set(models)].sort((a, b) => a.localeCompare(b));
 }
 
 export function notify(message, level = 'info') {

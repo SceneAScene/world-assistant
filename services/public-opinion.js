@@ -10,7 +10,7 @@ import {
     normalizeStreetWanderPayload,
     parsePublicOpinionResponse,
 } from '../engine/public-opinion-result.js';
-import { generateWithCurrentConnection } from '../platform/sillytavern.js';
+import { generateSceneWorldText } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 
@@ -116,7 +116,7 @@ export async function refreshCanonicalPublicOpinion() {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateWithCurrentConnection(messages, { responseLength: 1700 });
+    const raw = await generateSceneWorldText(messages, { responseLength: 1700 });
     const payload = parsePublicOpinionResponse(raw);
     const normalized = normalizeCanonicalOpinionPayload(payload, { sources, generatedAt });
 
@@ -163,7 +163,7 @@ export async function refreshStreetPublicOpinion() {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateWithCurrentConnection(messages, { responseLength: 2200 });
+    const raw = await generateSceneWorldText(messages, { responseLength: 2200 });
     const payload = parsePublicOpinionResponse(raw);
     const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
     if (normalized.street.length < 3 || normalized.places.length < 3) {
