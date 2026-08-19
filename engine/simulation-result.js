@@ -5,11 +5,16 @@ function cleanText(value, max = 2000) {
 const NO_CHANGE_TEXT = new Set([
     '无', '暂无', '无变化', '暂无变化', '没有变化', '无显著变化', '暂无显著变化',
     '无重要变化', '暂无重要变化', '无新增', '暂无新增', '一切正常', '局势稳定',
+    'none', 'no change', 'no changes', 'n/a',
 ]);
 
 function meaningfulText(value, max = 2000) {
     const text = cleanText(value, max);
-    return !text || NO_CHANGE_TEXT.has(text) ? '' : text;
+    if (!text) return '';
+    const normalized = text.toLowerCase().replace(/[。.!！；;，,\s]+$/g, '');
+    if (NO_CHANGE_TEXT.has(text) || NO_CHANGE_TEXT.has(normalized)) return '';
+    if (/^(?:当前|目前)?(?:没有|暂无).{0,10}(?:值得|需要).{0,10}(?:概括|记录|知道).{0,10}(?:世界)?(?:变化|状态)$/.test(normalized)) return '';
+    return text;
 }
 
 function stringArray(value, { maxItems = 80, maxLength = 600 } = {}) {
@@ -38,48 +43,76 @@ function objectArray(value, mapper, maxItems = 120) {
     return result;
 }
 
-function balancedObjectFrom(text, start) {
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    for (let index = start; index < text.length; index += 1) {
-        const char = text[index];
-        if (inString) {
-            if (escaped) escaped = false;
-            else if (char === '\\') escaped = true;
-            else if (char === '"') inString = false;
-            continue;
-        }
-        if (char === '"') { inString = true; continue; }
-        if (char === '{') depth += 1;
-        else if (char === '}') {
-            depth -= 1;
-            if (depth === 0) return text.slice(start, index + 1);
-        }
-    }
-    return null;
+function candidateJsonTexts(raw) {
+    const text = String(raw ?? '').replace(/^\uFEFF/, '').trim();
+    if (!text) return [];
+    const result = [];
+    const push = value => {
+        const candidate = String(value ?? '').trim();
+        if (candidate && !result.includes(candidate)) result.push(candidate);
+    };
+
+    // 优先接受模型直接返回的完整 JSON。
+    push(text);
+
+    // 兼容 ```json ... ```，但只取完整围栏内容，不扫描内部任意嵌套对象。
+    const fenced = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+    for (const match of fenced) push(match[1]);
+
+    // 兼容“下面是 JSON：{...}”这种少量前后说明：只截取首个 { 到最后一个 } 的整体。
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first >= 0 && last > first) push(text.slice(first, last + 1));
+    return result;
 }
 
-function extractJsonText(raw) {
-    const text = String(raw ?? '').trim();
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
-    const candidates = fenced ? [fenced, text] : [text];
-    for (const candidate of candidates) {
-        for (let start = candidate.indexOf('{'); start >= 0; start = candidate.indexOf('{', start + 1)) {
-            const objectText = balancedObjectFrom(candidate, start);
-            if (!objectText) continue;
-            try { JSON.parse(objectText); return objectText; } catch { /* try next */ }
-        }
-    }
-    throw new Error('模型返回中没有找到可解析的完整 JSON 对象');
+const SIMULATION_ARRAY_KEYS = Object.freeze([
+    'moment_items_upsert',
+    'moment_items_remove_ids',
+    'world_facts_upsert',
+    'world_facts_remove_ids',
+    'people_upsert',
+    'action_suggestions',
+]);
+
+function hasOwn(value, key) {
+    return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export function parseSimulationResponse(raw) {
-    let payload;
-    try { payload = JSON.parse(extractJsonText(raw)); }
-    catch (error) { throw new Error(`无法解析世界推演 JSON：${error?.message || error}`); }
+function assertSimulationContract(payload, { requiresBaseline = false } = {}) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('世界推演结果不是 JSON 对象');
+    if (!hasOwn(payload, 'world_patch') || !payload.world_patch || typeof payload.world_patch !== 'object' || Array.isArray(payload.world_patch)) {
+        throw new Error('缺少有效的 world_patch');
+    }
+    if (!hasOwn(payload, 'simulation_digest')) throw new Error('缺少 simulation_digest');
+    for (const key of SIMULATION_ARRAY_KEYS) {
+        if (!hasOwn(payload, key) || !Array.isArray(payload[key])) throw new Error(`缺少数组字段 ${key}`);
+    }
+    if (requiresBaseline && !meaningfulText(payload.world_patch.summary, 1600)) {
+        throw new Error('首次世界推演没有返回“当前世界”基线摘要。本次结果不会保存，请重试；若仍失败可减少单批正文或参考条目。');
+    }
+    const actions = payload.action_suggestions;
+    if (actions.length < 3 || actions.length > 5) {
+        throw new Error(`行动建议应为 3～5 条，当前返回 ${actions.length} 条。本次结果不会保存。`);
+    }
     return payload;
+}
+
+export function parseSimulationResponse(raw, options = {}) {
+    let lastError = null;
+    for (const candidate of candidateJsonTexts(raw)) {
+        try {
+            const payload = JSON.parse(candidate);
+            return assertSimulationContract(payload, options);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw new Error(`无法解析完整的世界推演 JSON：${lastError?.message || '模型返回不是完整 JSON'}。本次结果不会保存。`);
+}
+
+export function validateSimulationPayload(payload, options = {}) {
+    return assertSimulationContract(payload, options);
 }
 
 function slug(value, prefix) {

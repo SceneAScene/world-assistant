@@ -1,39 +1,38 @@
 import { getContext, extension_settings } from '../../../../extensions.js';
 import { generateRaw, saveSettingsDebounced } from '../../../../../script.js';
+import { parseCustomApiCompletion } from './custom-api-response.js';
+
 export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
-    // 世界推演可以额外读取当前角色的“角色描述（Description）”。见闻不读取角色描述。
     includeCharacterDescription: true,
     characterDescriptionMaxChars: 5000,
-    // 世界推演与见闻分别维护“世界书条目”白名单。
-    // 条目是否在 SillyTavern 中启用/常驻/关键词触发，不影响它能否出现在 SceneWorld 的选择列表。
-    // 首次发现一个条目时：若该条目在 SillyTavern 中启用，则 SceneWorld 默认勾选；若在酒馆中关闭，则默认不勾选。
-    // 用户一旦手动勾选/取消，SceneWorld 会保存显式选择，后续不再被酒馆启用状态覆盖。
     simulationWorldEntrySelection: Object.freeze({}),
     observationWorldEntrySelection: Object.freeze({}),
     simulationWorldInfoMaxChars: 16000,
     observationWorldInfoMaxChars: 16000,
-    // Only text inside these complete assistant-message tags is treated as narrative canon.
-    // This intentionally excludes status panels, chain-of-thought blocks, action menus and mini-theaters outside the body tag.
     contentTags: Object.freeze(['content']),
     contentFallbackToWholeMessage: false,
-    // 首次在一个旧聊天中启用世界动态时，默认只从当前附近开始：取最近最多 10 条 AI 正文。
-    // 若用户明确选择从某楼层回溯，则从指定楼层起每批最多向后结算 10 条。
     initialSettlementMode: 'latest',
     initialStartFloor: 0,
-    // 单次世界推演读取的 AI 正文条数。UI 只提供 5 或 10，且最大不超过 10。
     maxPendingAssistantMessages: 10,
-    // 柏宝书长期历史也分开控制。世界推演和见闻可独立启用。
     simulationUseBaiBaiBook: false,
     observationUseBaiBaiBook: false,
     baibaiHistoryMaxChars: 8000,
-    // 世界动态独立界面字号比例。90%～125%，每次 5%。
-    uiFontScale: 110,
-    // 模型连接：默认复用酒馆当前连接；也可切换到独立 OpenAI 兼容 API。
-    modelConnectionMode: 'tavern', // 'tavern' | 'custom'
+
+    // alpha.30 起，100% 就是 alpha.29 用户看到约 115% 时的实际字号。
+    // 独立于 SillyTavern 全局字号，范围 80%～130%。
+    uiScalePercent: 100,
+    uiFontUrl: '',
+    uiFontFamily: '',
+    glassEffect: 'off', // off | soft | strong
+
+    modelConnectionMode: 'tavern', // tavern | custom
     customApiUrl: '',
     customApiKey: '',
     customApiModel: '',
     customApiTimeoutSec: 180,
+    // API 配置库：命名快照。载入只填回表单，用户点击“保存模型设置”后才真正生效。
+    apiPresets: Object.freeze([]),
+    apiPresetActiveId: '',
 });
 
 function normalizeContentTagName(value) {
@@ -51,9 +50,7 @@ function normalizeContentTagName(value) {
 }
 
 function normalizeContentTags(value) {
-    const source = Array.isArray(value)
-        ? value
-        : String(value ?? '').split(/[\n,，;；]+/g);
+    const source = Array.isArray(value) ? value : String(value ?? '').split(/[\n,，;；]+/g);
     const seen = new Set();
     const result = [];
     for (const item of source) {
@@ -66,32 +63,65 @@ function normalizeContentTags(value) {
     return result;
 }
 
+function normalizeEntrySelection(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const result = {};
+    for (const [id, enabled] of Object.entries(source)) {
+        const key = String(id ?? '').trim();
+        if (key) result[key] = enabled === true;
+    }
+    return result;
+}
+
+function clampStep(value, min, max, step = 1, fallback = min) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(number / step) * step));
+}
+
+function makePresetId(seed = '') {
+    const source = `${Date.now()}|${Math.random()}|${seed}`;
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i += 1) {
+        hash ^= source.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `api_${(hash >>> 0).toString(36)}_${Date.now().toString(36)}`;
+}
+
+function normalizeApiPresets(value) {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set();
+    const result = [];
+    for (const raw of value) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+        const name = String(raw.name ?? '').trim().slice(0, 80);
+        const url = String(raw.url ?? raw.apiUrl ?? '').trim();
+        const key = String(raw.key ?? raw.apiKey ?? '');
+        const model = String(raw.model ?? raw.apiModel ?? '').trim();
+        if (!name || !url) continue;
+        let id = String(raw.id ?? '').trim();
+        if (!id || seen.has(id)) id = makePresetId(name);
+        seen.add(id);
+        result.push({
+            id,
+            name,
+            url,
+            key,
+            model,
+            timeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(raw.timeoutSec ?? raw.timeout) || 180))),
+        });
+        if (result.length >= 24) break;
+    }
+    return result;
+}
+
 export function getSceneWorldSettings() {
     const raw = extension_settings?.sceneworld;
     const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-    const merged = {
-        ...DEFAULT_SCENEWORLD_SETTINGS,
-        ...source,
-    };
+    const merged = { ...DEFAULT_SCENEWORLD_SETTINGS, ...source };
     const contentTags = normalizeContentTags(merged.contentTags);
 
-    const normalizeEntrySelection = value => {
-        const sourceSelection = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-        const result = {};
-        for (const [id, enabled] of Object.entries(sourceSelection)) {
-            const key = String(id ?? '').trim();
-            if (!key) continue;
-            result[key] = enabled === true;
-        }
-        return result;
-    };
-
-    // alpha.17 以前按“整本世界书”选择。alpha.18 改为条目级后不自动把整本书全部迁移为勾选，
-    // 避免服装、NSFW、状态栏等无关条目被一次性大量传输。用户需要在新列表中明确勾选需要的条目。
-    const simulationWorldEntrySelection = normalizeEntrySelection(source.simulationWorldEntrySelection);
-    const observationWorldEntrySelection = normalizeEntrySelection(source.observationWorldEntrySelection);
-
-    // alpha.11 以前叫 includeCharacterBase；升级后只保留角色描述，不再发送性格/场景字段。
     const includeCharacterDescription = 'includeCharacterDescription' in source
         ? source.includeCharacterDescription !== false
         : source.includeCharacterBase !== false;
@@ -99,33 +129,37 @@ export function getSceneWorldSettings() {
         ? Math.max(1000, Math.min(10000, Math.trunc(Number(source.characterDescriptionMaxChars))))
         : Math.max(1000, Math.min(10000, Math.trunc(Number(source.characterBaseMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.characterDescriptionMaxChars)));
     const initialSettlementMode = String(merged.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
-    const initialStartFloor = Number.isFinite(Number(merged.initialStartFloor))
-        ? Math.max(0, Math.trunc(Number(merged.initialStartFloor)))
-        : 0;
+    const initialStartFloor = Number.isFinite(Number(merged.initialStartFloor)) ? Math.max(0, Math.trunc(Number(merged.initialStartFloor))) : 0;
     const maxPendingAssistantMessages = Number(merged.maxPendingAssistantMessages) === 5 ? 5 : 10;
 
     const legacyWorldInfoMaxChars = Number(source.worldInfoMaxChars);
-    const simulationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(
-        Number(merged.simulationWorldInfoMaxChars) || legacyWorldInfoMaxChars || DEFAULT_SCENEWORLD_SETTINGS.simulationWorldInfoMaxChars,
-    )));
-    const observationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(
-        Number(merged.observationWorldInfoMaxChars) || legacyWorldInfoMaxChars || DEFAULT_SCENEWORLD_SETTINGS.observationWorldInfoMaxChars,
-    )));
+    const simulationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(Number(merged.simulationWorldInfoMaxChars) || legacyWorldInfoMaxChars || DEFAULT_SCENEWORLD_SETTINGS.simulationWorldInfoMaxChars)));
+    const observationWorldInfoMaxChars = Math.max(2000, Math.min(32000, Math.trunc(Number(merged.observationWorldInfoMaxChars) || legacyWorldInfoMaxChars || DEFAULT_SCENEWORLD_SETTINGS.observationWorldInfoMaxChars)));
 
-    // 旧 useBaiBaiBook 过去只实际用于核心世界推演，因此迁移时只继承给世界推演；见闻默认关闭。
-    const simulationUseBaiBaiBook = 'simulationUseBaiBaiBook' in source
-        ? source.simulationUseBaiBaiBook === true
-        : source.useBaiBaiBook === true;
-    const observationUseBaiBaiBook = 'observationUseBaiBaiBook' in source
-        ? source.observationUseBaiBaiBook === true
-        : false;
+    const simulationUseBaiBaiBook = 'simulationUseBaiBaiBook' in source ? source.simulationUseBaiBaiBook === true : source.useBaiBaiBook === true;
+    const observationUseBaiBaiBook = 'observationUseBaiBaiBook' in source ? source.observationUseBaiBaiBook === true : false;
+
+    // 旧 uiFontScale 的“115%”在 alpha.30 中映射为新的“100%”，实际视觉大小保持不变。
+    let uiScalePercent = DEFAULT_SCENEWORLD_SETTINGS.uiScalePercent;
+    if (Number.isFinite(Number(source.uiScalePercent))) {
+        uiScalePercent = clampStep(source.uiScalePercent, 80, 130, 5, 100);
+    } else if (Number.isFinite(Number(source.uiFontScale))) {
+        uiScalePercent = clampStep(Number(source.uiFontScale) - 15, 80, 130, 5, 100);
+    } else if (Number.isFinite(Number(source.uiFontAdjust))) {
+        const legacy = Math.max(-1, Math.min(2, Math.trunc(Number(source.uiFontAdjust))));
+        const legacyScale = ({ '-1': 90, '0': 100, '1': 110, '2': 120 })[String(legacy)] || 115;
+        uiScalePercent = clampStep(legacyScale - 15, 80, 130, 5, 100);
+    }
+
+    const apiPresets = normalizeApiPresets(source.apiPresets);
+    const activeId = String(source.apiPresetActiveId ?? '').trim();
 
     return {
         ...merged,
         includeCharacterDescription,
         characterDescriptionMaxChars,
-        simulationWorldEntrySelection,
-        observationWorldEntrySelection,
+        simulationWorldEntrySelection: normalizeEntrySelection(source.simulationWorldEntrySelection),
+        observationWorldEntrySelection: normalizeEntrySelection(source.observationWorldEntrySelection),
         simulationWorldInfoMaxChars,
         observationWorldInfoMaxChars,
         contentTags: contentTags.length ? contentTags : ['content'],
@@ -136,23 +170,17 @@ export function getSceneWorldSettings() {
         simulationUseBaiBaiBook,
         observationUseBaiBaiBook,
         baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
-        uiFontScale: (() => {
-            if (Number.isFinite(Number(source.uiFontScale))) {
-                const rawScale = Math.round(Number(source.uiFontScale) / 5) * 5;
-                return Math.max(90, Math.min(125, rawScale));
-            }
-            // 兼容 alpha.22～alpha.27 的 -1/0/1/2 字号档位。
-            if (Number.isFinite(Number(source.uiFontAdjust))) {
-                const legacy = Math.max(-1, Math.min(2, Math.trunc(Number(source.uiFontAdjust))));
-                return ({ '-1': 90, '0': 100, '1': 110, '2': 120 })[String(legacy)] || 110;
-            }
-            return DEFAULT_SCENEWORLD_SETTINGS.uiFontScale;
-        })(),
+        uiScalePercent,
+        uiFontUrl: String(source.uiFontUrl ?? '').trim(),
+        uiFontFamily: String(source.uiFontFamily ?? '').trim(),
+        glassEffect: ['soft', 'strong'].includes(String(source.glassEffect ?? '').toLowerCase()) ? String(source.glassEffect).toLowerCase() : 'off',
         modelConnectionMode: String(merged.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern',
         customApiUrl: String(merged.customApiUrl || '').trim(),
         customApiKey: String(merged.customApiKey || ''),
         customApiModel: String(merged.customApiModel || '').trim(),
         customApiTimeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(merged.customApiTimeoutSec) || DEFAULT_SCENEWORLD_SETTINGS.customApiTimeoutSec))),
+        apiPresets,
+        apiPresetActiveId: apiPresets.some(item => item.id === activeId) ? activeId : '',
     };
 }
 
@@ -163,7 +191,9 @@ export function updateSceneWorldSettings(patch) {
         ...current,
         simulationWorldEntrySelection: { ...current.simulationWorldEntrySelection },
         observationWorldEntrySelection: { ...current.observationWorldEntrySelection },
+        apiPresets: current.apiPresets.map(item => ({ ...item })),
     };
+
     for (const key of ['includeCharacterDescription', 'contentFallbackToWholeMessage', 'simulationUseBaiBaiBook', 'observationUseBaiBaiBook']) {
         if (key in patch) next[key] = patch[key] === true;
     }
@@ -172,54 +202,33 @@ export function updateSceneWorldSettings(patch) {
         ['simulationWorldInfoMaxChars', 2000, 32000],
         ['observationWorldInfoMaxChars', 2000, 32000],
         ['baibaiHistoryMaxChars', 2000, 20000],
-        ['maxPendingAssistantMessages', 1, 10],
-        ['uiFontScale', 90, 125],
         ['customApiTimeoutSec', 30, 600],
     ]) {
         if (key in patch && Number.isFinite(Number(patch[key]))) next[key] = Math.max(min, Math.min(max, Math.trunc(Number(patch[key]))));
     }
-    if ('maxPendingAssistantMessages' in patch) {
-        next.maxPendingAssistantMessages = Number(patch.maxPendingAssistantMessages) === 5 ? 5 : 10;
-    }
-    if ('uiFontScale' in patch && Number.isFinite(Number(patch.uiFontScale))) {
-        next.uiFontScale = Math.max(90, Math.min(125, Math.round(Number(patch.uiFontScale) / 5) * 5));
-    }
-    if ('initialSettlementMode' in patch) {
-        next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
-    }
-    if ('initialStartFloor' in patch && Number.isFinite(Number(patch.initialStartFloor))) {
-        next.initialStartFloor = Math.max(0, Math.trunc(Number(patch.initialStartFloor)));
-    }
-    if ('modelConnectionMode' in patch) {
-        next.modelConnectionMode = String(patch.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern';
-    }
-    for (const key of ['customApiUrl', 'customApiKey', 'customApiModel']) {
+    if ('maxPendingAssistantMessages' in patch) next.maxPendingAssistantMessages = Number(patch.maxPendingAssistantMessages) === 5 ? 5 : 10;
+    if ('uiScalePercent' in patch && Number.isFinite(Number(patch.uiScalePercent))) next.uiScalePercent = clampStep(patch.uiScalePercent, 80, 130, 5, 100);
+    if ('initialSettlementMode' in patch) next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
+    if ('initialStartFloor' in patch && Number.isFinite(Number(patch.initialStartFloor))) next.initialStartFloor = Math.max(0, Math.trunc(Number(patch.initialStartFloor)));
+    if ('modelConnectionMode' in patch) next.modelConnectionMode = String(patch.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern';
+    for (const key of ['customApiUrl', 'customApiKey', 'customApiModel', 'uiFontUrl', 'uiFontFamily']) {
         if (key in patch) next[key] = String(patch[key] ?? '').trim();
     }
+    if ('glassEffect' in patch) next.glassEffect = ['soft', 'strong'].includes(String(patch.glassEffect ?? '').toLowerCase()) ? String(patch.glassEffect).toLowerCase() : 'off';
 
-    const normalizeIncomingSelection = value => {
-        const normalized = {};
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return normalized;
-        for (const [id, enabled] of Object.entries(value)) {
-            const key = String(id ?? '').trim();
-            if (!key) continue;
-            normalized[key] = enabled === true;
-        }
-        return normalized;
-    };
-    if ('simulationWorldEntrySelection' in patch) {
-        next.simulationWorldEntrySelection = normalizeIncomingSelection(patch.simulationWorldEntrySelection);
+    if ('apiPresets' in patch) next.apiPresets = normalizeApiPresets(patch.apiPresets);
+    if ('apiPresetActiveId' in patch) {
+        const id = String(patch.apiPresetActiveId ?? '').trim();
+        next.apiPresetActiveId = next.apiPresets.some(item => item.id === id) ? id : '';
     }
-    if ('observationWorldEntrySelection' in patch) {
-        next.observationWorldEntrySelection = normalizeIncomingSelection(patch.observationWorldEntrySelection);
-    }
+
+    const normalizeIncomingSelection = value => normalizeEntrySelection(value);
+    if ('simulationWorldEntrySelection' in patch) next.simulationWorldEntrySelection = normalizeIncomingSelection(patch.simulationWorldEntrySelection);
+    if ('observationWorldEntrySelection' in patch) next.observationWorldEntrySelection = normalizeIncomingSelection(patch.observationWorldEntrySelection);
     if ('worldEntryId' in patch) {
         const id = String(patch.worldEntryId ?? '').trim();
         const purpose = String(patch.worldEntryPurpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
-        if (id) {
-            const key = purpose === 'observation' ? 'observationWorldEntrySelection' : 'simulationWorldEntrySelection';
-            next[key][id] = patch.worldEntryEnabled === true;
-        }
+        if (id) next[purpose === 'observation' ? 'observationWorldEntrySelection' : 'simulationWorldEntrySelection'][id] = patch.worldEntryEnabled === true;
     }
     if ('worldEntryIds' in patch && Array.isArray(patch.worldEntryIds)) {
         const purpose = String(patch.worldEntryPurpose ?? '').trim().toLowerCase() === 'observation' ? 'observation' : 'simulation';
@@ -235,18 +244,12 @@ export function updateSceneWorldSettings(patch) {
         next.contentTags = tags.length ? tags : ['content'];
     }
 
-    // 清理已经废弃的旧设置，避免后续误以为仍参与逻辑。
-    delete next.includeCharacterBase;
-    delete next.includeCharacterWorldInfo;
-    delete next.includeChatWorldInfo;
-    delete next.includeGlobalWorldInfo;
-    delete next.characterBaseMaxChars;
-    delete next.worldBookSelection;
-    delete next.simulationWorldBookSelection;
-    delete next.observationWorldBookSelection;
-    delete next.worldInfoMaxChars;
-    delete next.useBaiBaiBook;
-    delete next.uiFontAdjust;
+    // 清理旧字段，避免新旧字号语义并存。
+    for (const key of [
+        'includeCharacterBase', 'includeCharacterWorldInfo', 'includeChatWorldInfo', 'includeGlobalWorldInfo',
+        'characterBaseMaxChars', 'worldBookSelection', 'simulationWorldBookSelection', 'observationWorldBookSelection',
+        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale',
+    ]) delete next[key];
 
     extension_settings.sceneworld = next;
     saveSettingsDebounced?.();
@@ -255,6 +258,22 @@ export function updateSceneWorldSettings(patch) {
         contentTags: [...next.contentTags],
         simulationWorldEntrySelection: { ...next.simulationWorldEntrySelection },
         observationWorldEntrySelection: { ...next.observationWorldEntrySelection },
+        apiPresets: next.apiPresets.map(item => ({ ...item })),
+    };
+}
+
+export function createApiPresetSnapshot({ name, url, key, model, timeoutSec = 180, id = '' } = {}) {
+    const presetName = String(name ?? '').trim().slice(0, 80);
+    const apiUrl = String(url ?? '').trim();
+    if (!presetName) throw new Error('API 配置名称不能为空');
+    if (!apiUrl) throw new Error('API 地址不能为空');
+    return {
+        id: String(id ?? '').trim() || makePresetId(presetName),
+        name: presetName,
+        url: apiUrl,
+        key: String(key ?? ''),
+        model: String(model ?? '').trim(),
+        timeoutSec: Math.max(30, Math.min(600, Math.trunc(Number(timeoutSec) || 180))),
     };
 }
 
@@ -337,16 +356,6 @@ function normalizeCustomApiUrl(value) {
     return raw;
 }
 
-function extractCustomCompletion(data) {
-    const choice = data?.choices?.[0];
-    const content = choice?.message?.content ?? choice?.text ?? data?.content ?? data?.response;
-    if (typeof content === 'string') return content.trim();
-    if (Array.isArray(content)) {
-        return content.map(item => typeof item === 'string' ? item : (item?.text ?? item?.content ?? '')).join('').trim();
-    }
-    return '';
-}
-
 function mapCustomApiError(status, raw) {
     const text = String(raw ?? '').trim();
     if (status === 400) return `请求参数不兼容（400）：${text.slice(0, 140) || '请检查模型名称或接口兼容性'}`;
@@ -394,10 +403,7 @@ async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
             throw new Error(mapCustomApiError(res.status, raw));
         }
         const data = await res.json();
-        if (data?.error) throw new Error(String(data.error?.message || data.error));
-        const content = extractCustomCompletion(data);
-        if (!content) throw new Error('自定义 API 没有返回可用内容');
-        return content;
+        return parseCustomApiCompletion(data).content;
     } catch (error) {
         if (timedOut) throw new Error(`自定义 API 请求超时（超过 ${timeoutSec} 秒）`);
         throw error;

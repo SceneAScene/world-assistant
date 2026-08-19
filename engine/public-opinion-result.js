@@ -22,48 +22,46 @@ function stripOuterSpeechWrappers(value, max = 2000) {
     return cleanText(text, max);
 }
 
-function balancedObjectFrom(text, start) {
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    for (let index = start; index < text.length; index += 1) {
-        const char = text[index];
-        if (inString) {
-            if (escaped) escaped = false;
-            else if (char === '\\') escaped = true;
-            else if (char === '"') inString = false;
-            continue;
-        }
-        if (char === '"') { inString = true; continue; }
-        if (char === '{') depth += 1;
-        else if (char === '}') {
-            depth -= 1;
-            if (depth === 0) return text.slice(start, index + 1);
-        }
-    }
-    return null;
+function candidateJsonTexts(raw) {
+    const text = String(raw ?? '').replace(/^\uFEFF/, '').trim();
+    if (!text) return [];
+    const result = [];
+    const push = value => {
+        const candidate = String(value ?? '').trim();
+        if (candidate && !result.includes(candidate)) result.push(candidate);
+    };
+    push(text);
+    for (const match of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) push(match[1]);
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first >= 0 && last > first) push(text.slice(first, last + 1));
+    return result;
 }
 
-function extractJsonText(raw) {
-    const text = String(raw ?? '').trim();
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
-    const candidates = fenced ? [fenced, text] : [text];
-    for (const candidate of candidates) {
-        for (let start = candidate.indexOf('{'); start >= 0; start = candidate.indexOf('{', start + 1)) {
-            const objectText = balancedObjectFrom(candidate, start);
-            if (!objectText) continue;
-            try { JSON.parse(objectText); return objectText; } catch { /* keep searching */ }
-        }
-    }
-    throw new Error('模型返回中没有找到可解析的完整 JSON 对象');
-}
-
-export function parsePublicOpinionResponse(raw) {
-    let payload;
-    try { payload = JSON.parse(extractJsonText(raw)); }
-    catch (error) { throw new Error(`无法解析见闻 JSON：${error?.message || error}`); }
+function assertOpinionContract(payload, { kind = 'any' } = {}) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('见闻结果不是 JSON 对象');
+    if (kind === 'canonical') {
+        if (!Array.isArray(payload.news) || !Array.isArray(payload.forum ?? payload.forums)) {
+            throw new Error('公共动态缺少 news / forum 数组');
+        }
+    } else if (kind === 'street') {
+        if (!Array.isArray(payload.street) || !Array.isArray(payload.places)) {
+            throw new Error('街巷漫游缺少 street / places 数组');
+        }
+    }
     return payload;
+}
+
+export function parsePublicOpinionResponse(raw, options = {}) {
+    let lastError = null;
+    for (const candidate of candidateJsonTexts(raw)) {
+        try {
+            return assertOpinionContract(JSON.parse(candidate), options);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw new Error(`无法解析完整的见闻 JSON：${lastError?.message || '模型返回不是完整 JSON'}。本次结果不会保存。`);
 }
 
 function hash(value, prefix) {

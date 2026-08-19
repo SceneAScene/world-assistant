@@ -20,15 +20,26 @@ function batchSource(batch) {
     });
 }
 
+function hasWorldBaseline(state) {
+    return Boolean(String(state?.world?.summary ?? '').trim());
+}
+
+function syncForPendingRead(state) {
+    // alpha.29 曾可能在模型截断时错误推进锚点却没有建立“当前世界”。
+    // 没有世界基线时把它视为尚未完成首次推演，允许从当前附近重新建立，而不是被坏锚点锁死。
+    return hasWorldBaseline(state) ? (state?.sync ?? {}) : {};
+}
+
 export function inspectPendingNarrative() {
     const state = readSceneWorldState();
-    const batch = readPendingNarrativeBatch(state?.sync ?? {});
+    const batch = readPendingNarrativeBatch(syncForPendingRead(state));
     return { batch, stateExists: !!state };
 }
 
 export async function simulatePendingNarrative(expectedBatch = null) {
     const persisted = readSceneWorldState();
-    const batch = readPendingNarrativeBatch(persisted?.sync ?? {});
+    const baselineEstablished = hasWorldBaseline(persisted);
+    const batch = readPendingNarrativeBatch(syncForPendingRead(persisted));
 
     if (batch.anchorChanged) throw new Error(batch.anchorReason || '上次结算锚点发生变化，当前不能安全继续推演');
     if (!batch.hasPending) throw new Error('当前没有新的 AI 正文需要结算');
@@ -42,7 +53,12 @@ export async function simulatePendingNarrative(expectedBatch = null) {
         if (changed) throw new Error('待结算剧情在你预览后发生了变化，请重新读取后再推演');
     }
 
-    const base = persisted ?? createEmptySceneWorldState();
+    const incompleteLegacyCommit = Boolean(persisted)
+        && !baselineEstablished
+        && Number.isInteger(persisted?.sync?.lastProcessedAssistantMessageId);
+    // alpha.29 的截断回归可能留下“已推进锚点但没有当前世界基线”的半份状态。
+    // 这种状态不能继续作为权威上下文；重建首次基线时从干净状态开始，避免把截断片段误当事实。
+    const base = incompleteLegacyCommit ? createEmptySceneWorldState() : (persisted ?? createEmptySceneWorldState());
     const reference = await buildWorldReferenceContext({
         state: base,
         queryText: (batch.pendingMessages || []).map(item => item?.text || '').join('\n'),
@@ -59,8 +75,9 @@ export async function simulatePendingNarrative(expectedBatch = null) {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateSceneWorldText(messages, { responseLength: 2200 });
-    const payload = parseSimulationResponse(raw);
+    // 结构化推演对推理模型要预留足够输出预算；隐藏推理也可能计入 max_tokens。
+    const raw = await generateSceneWorldText(messages, { responseLength: 8000 });
+    const payload = parseSimulationResponse(raw, { requiresBaseline: !baselineEstablished });
     const changeSummary = summarizeSimulationPayload(payload);
     const source = batchSource(batch);
     const next = applySimulationPayload(base, payload, source);

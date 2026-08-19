@@ -20,7 +20,8 @@ function clone(value) {
 }
 
 function hasSuccessfulSimulation(state) {
-    return Number.isInteger(state?.sync?.lastProcessedAssistantMessageId);
+    return Boolean(String(state?.world?.summary ?? '').trim())
+        && Number.isInteger(state?.sync?.lastProcessedAssistantMessageId);
 }
 
 function ensureState() {
@@ -116,8 +117,8 @@ export async function refreshCanonicalPublicOpinion() {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateSceneWorldText(messages, { responseLength: 1700 });
-    const payload = parsePublicOpinionResponse(raw);
+    const raw = await generateSceneWorldText(messages, { responseLength: 6000 });
+    const payload = parsePublicOpinionResponse(raw, { kind: 'canonical' });
     const normalized = normalizeCanonicalOpinionPayload(payload, { sources, generatedAt });
 
     const latest = ensureState();
@@ -163,8 +164,8 @@ export async function refreshStreetPublicOpinion() {
         longTermHistoryText: baibai.text,
         longTermHistoryNote,
     });
-    const raw = await generateSceneWorldText(messages, { responseLength: 2200 });
-    const payload = parsePublicOpinionResponse(raw);
+    const raw = await generateSceneWorldText(messages, { responseLength: 7000 });
+    const payload = parsePublicOpinionResponse(raw, { kind: 'street' });
     const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
     if (normalized.street.length < 3 || normalized.places.length < 3) {
         throw new Error(`街巷漫游结果不完整：市井闲闻 ${normalized.street.length} 条、地点 ${normalized.places.length} 个；要求至少各 3 条，本次结果未保存`);
