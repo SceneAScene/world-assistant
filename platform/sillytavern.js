@@ -21,8 +21,6 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     // alpha.30 起，100% 就是 alpha.29 用户看到约 115% 时的实际字号。
     // 独立于 SillyTavern 全局字号，范围 80%～130%。
     uiScalePercent: 100,
-    uiFontUrl: '',
-    uiFontFamily: '',
 
     modelConnectionMode: 'tavern', // tavern | custom
     customApiUrl: '',
@@ -150,7 +148,7 @@ export function getSceneWorldSettings() {
     const apiPresets = normalizeApiPresets(source.apiPresets);
     const activeId = String(source.apiPresetActiveId ?? '').trim();
 
-    return {
+    const normalized = {
         ...merged,
         includeCharacterDescription,
         characterDescriptionMaxChars,
@@ -167,8 +165,6 @@ export function getSceneWorldSettings() {
         observationUseBaiBaiBook,
         baibaiHistoryMaxChars: Math.max(2000, Math.min(20000, Math.trunc(Number(merged.baibaiHistoryMaxChars) || DEFAULT_SCENEWORLD_SETTINGS.baibaiHistoryMaxChars))),
         uiScalePercent,
-        uiFontUrl: String(source.uiFontUrl ?? '').trim(),
-        uiFontFamily: String(source.uiFontFamily ?? '').trim(),
         modelConnectionMode: String(merged.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern',
         customApiUrl: String(merged.customApiUrl || '').trim(),
         customApiKey: String(merged.customApiKey || ''),
@@ -178,6 +174,9 @@ export function getSceneWorldSettings() {
         apiPresets,
         apiPresetActiveId: apiPresets.some(item => item.id === activeId) ? activeId : '',
     };
+    delete normalized.uiFontUrl;
+    delete normalized.uiFontFamily;
+    return normalized;
 }
 
 export function updateSceneWorldSettings(patch) {
@@ -208,7 +207,7 @@ export function updateSceneWorldSettings(patch) {
     if ('initialSettlementMode' in patch) next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
     if ('initialStartFloor' in patch && Number.isFinite(Number(patch.initialStartFloor))) next.initialStartFloor = Math.max(0, Math.trunc(Number(patch.initialStartFloor)));
     if ('modelConnectionMode' in patch) next.modelConnectionMode = String(patch.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern';
-    for (const key of ['customApiUrl', 'customApiKey', 'customApiModel', 'uiFontUrl', 'uiFontFamily']) {
+    for (const key of ['customApiUrl', 'customApiKey', 'customApiModel']) {
         if (key in patch) next[key] = String(patch[key] ?? '').trim();
     }
 
@@ -244,7 +243,7 @@ export function updateSceneWorldSettings(patch) {
     for (const key of [
         'includeCharacterBase', 'includeCharacterWorldInfo', 'includeChatWorldInfo', 'includeGlobalWorldInfo',
         'characterBaseMaxChars', 'worldBookSelection', 'simulationWorldBookSelection', 'observationWorldBookSelection',
-        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale', 'glassEffect', 'modelContextMode', 'modelContextTokens',
+        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale', 'uiFontUrl', 'uiFontFamily', 'glassEffect', 'modelContextMode', 'modelContextTokens',
     ]) delete next[key];
 
     extension_settings.sceneworld = next;

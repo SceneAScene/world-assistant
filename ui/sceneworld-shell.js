@@ -8,7 +8,6 @@ import { createSceneWorldDialogManager } from './dialog-manager.js';
 import { createViewportManager } from './viewport-manager.js';
 
 const HOST_ID = 'sceneworld-root';
-const SHADOW_FONT_LINK_ID = 'sceneworld-ui-font-shadow-link';
 const TABS = ['此刻', '人物', '见闻', '脉络', '纪事'];
 const SETTINGS_TABS = [
     ['simulation', '推演'],
@@ -46,7 +45,7 @@ const HELP_TOPICS = Object.freeze({
 });
 
 const STYLES = `
-:host{all:initial;position:fixed;top:var(--sw-vv-top,0px);left:var(--sw-vv-left,0px);right:auto;bottom:auto;width:var(--sw-vv-width,100vw);height:var(--sw-vv-height,100dvh);z-index:2147483000;display:block;font-family:var(--sw-font-user,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif);color:#272821;--sw-bg:#f3eee3;--sw-surface:#f8f3e8;--sw-card:#fffdf7;--sw-text:#292722;--sw-muted:#746b61;--sw-faint:#9b9185;--sw-line:#ddd2c2;--sw-line-soft:#eee5d7;--sw-accent:#436c85;--sw-accent-dark:#35586e;--sw-accent-soft:#e4edf1;--sw-support:#82b29b;--sw-support-soft:#e7f1eb;--sw-warn:#a86636;--sw-warn-bg:#f8eadc;--sw-danger:#b73f42;--sw-danger-bg:#f7e5e4;--sw-shadow:0 18px 55px rgba(60,58,49,.18);--sw-font-adjust:1px}
+:host{all:initial;position:fixed;top:var(--sw-vv-top,0px);left:var(--sw-vv-left,0px);right:auto;bottom:auto;width:var(--sw-vv-width,100vw);height:var(--sw-vv-height,100dvh);z-index:2147483000;display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#272821;--sw-bg:#f3eee3;--sw-surface:#f8f3e8;--sw-card:#fffdf7;--sw-text:#292722;--sw-muted:#746b61;--sw-faint:#9b9185;--sw-line:#ddd2c2;--sw-line-soft:#eee5d7;--sw-accent:#436c85;--sw-accent-dark:#35586e;--sw-accent-soft:#e4edf1;--sw-support:#82b29b;--sw-support-soft:#e7f1eb;--sw-warn:#a86636;--sw-warn-bg:#f8eadc;--sw-danger:#b73f42;--sw-danger-bg:#f7e5e4;--sw-shadow:0 18px 55px rgba(60,58,49,.18);--sw-font-adjust:1px}
 *,*::before,*::after{box-sizing:border-box}button,input,select,textarea{font:inherit}button{color:inherit}.backdrop{width:100%;height:100%;display:grid;place-items:center;padding:max(14px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:rgba(48,48,42,.34)}
 .panel{width:min(920px,96vw);height:min(820px,calc(var(--sw-vv-height,100dvh) - 28px));max-height:calc(var(--sw-vv-height,100dvh) - 12px);min-height:430px;overflow:hidden;display:grid;grid-template-rows:auto 1fr auto;border:1px solid #d9cdbc;border-radius:20px;background:var(--sw-bg);box-shadow:var(--sw-shadow);color:var(--sw-text)}
 .header{min-height:60px;padding:11px 14px 10px 20px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--sw-line);background:rgba(255,253,247,.97)}.title{font-size:calc(19px + var(--sw-font-adjust));font-weight:760;letter-spacing:.035em;color:#20211c}.version{font-size:calc(10.5px + var(--sw-font-adjust));color:var(--sw-faint);margin-top:2px}.spacer{flex:1}.header-icon,.close{border:0;background:transparent;color:#42443c;width:38px;height:38px;border-radius:10px;cursor:pointer;line-height:1;display:grid;place-items:center;transition:background .16s,color .16s}.header-icon{font-size:calc(19px + var(--sw-font-adjust))}.close{font-size:calc(24px + var(--sw-font-adjust))}.header-icon:hover,.close:hover{background:var(--sw-accent-soft);color:var(--sw-accent-dark)}
@@ -277,7 +276,6 @@ function appearanceSettingsHtml(actions, busy) {
     const value=Math.max(80,Math.min(130,Math.round((Number(settings.uiScalePercent)||100)/5)*5));
     return `<div class="card"><div class="card-header"><div><h2>外观</h2><div class="card-subtitle">只调整世界动态，不影响酒馆本身</div></div></div><div class="appearance-grid">
         <div class="appearance-block"><h3>界面大小</h3><p>当前视觉大小定义为 100%，可按 5% 微调。</p><div class="font-scale-control"><button class="font-scale-button" type="button" data-font-scale-step="-5" ${busy||value<=80?'disabled':''}>−</button><div class="font-scale-value" data-font-scale-value>${value}%</div><button class="font-scale-button" type="button" data-font-scale-step="5" ${busy||value>=130?'disabled':''}>＋</button></div><div class="note">范围 80%～130%。100% 即当前默认视觉大小。</div></div>
-        <div class="appearance-block"><h3>插件字体</h3><p>为世界动态单独加载字体样式；留空则使用系统字体。</p><label class="api-field"><span>字体 CSS 地址</span><input class="setting-text" type="url" data-ui-font-url placeholder="https://.../font.css" value="${escapeHtml(settings.uiFontUrl||'')}" autocomplete="off"></label><label class="api-field"><span>字体名称</span><input class="setting-text" type="text" data-ui-font-family placeholder="填写 CSS 中声明的字体名称" value="${escapeHtml(settings.uiFontFamily||'')}" autocomplete="off"></label><div class="actions"><button class="action primary" type="button" data-apply-ui-font ${busy?'disabled':''}>应用字体</button><button class="action" type="button" data-reset-ui-font ${busy?'disabled':''}>恢复系统字体</button></div><div class="note">字体名称需要与 CSS 中声明的名称一致。只作用于世界动态界面。</div></div>
     </div></div>`;
 }
 
@@ -457,53 +455,6 @@ export function createSceneWorldShell({ version, onClose, actions }) {
             button.disabled=busy||(step<0&&value<=80)||(step>0&&value>=130);
         });
     };
-    const ensureFontLink=(root,id,cssUrl)=>{
-        let link=root?.querySelector?.(`#${id}`)??null;
-        if(!cssUrl){link?.remove();return null}
-        if(!link){
-            link=document.createElement('link');
-            link.id=id;
-            link.rel='stylesheet';
-            root.appendChild(link);
-        }
-        if(link.getAttribute('href')!==cssUrl){
-            link.dataset.sceneworldLoaded='0';
-            link.setAttribute('href',cssUrl);
-        }
-        return link;
-    };
-    const waitForFontStylesheet=(link,timeoutMs=8000)=>new Promise((resolve,reject)=>{
-        if(!link){resolve();return}
-        if(link.dataset.sceneworldLoaded==='1'||link.sheet){link.dataset.sceneworldLoaded='1';resolve();return}
-        let settled=false;
-        const finish=(error)=>{
-            if(settled)return;
-            settled=true;
-            clearTimeout(timer);
-            link.removeEventListener('load',onLoad);
-            link.removeEventListener('error',onError);
-            if(error)reject(error);else resolve();
-        };
-        const onLoad=()=>{link.dataset.sceneworldLoaded='1';finish()};
-        const onError=()=>finish(new Error('字体 CSS 加载失败，请检查地址是否可以直接访问'));
-        const timer=setTimeout(()=>finish(new Error('字体 CSS 加载超时，请检查网络或字体地址')),timeoutMs);
-        link.addEventListener('load',onLoad,{once:true});
-        link.addEventListener('error',onError,{once:true});
-    });
-    const applyPluginFont=async(url,family,{wait=false}={})=>{
-        const cssUrl=String(url||'').trim();
-        const fontFamily=String(family||'').trim();
-        // 字体样式严格限制在世界动态自己的 Shadow DOM 内。
-        // 不向 document.head 注入任何用户字体 CSS，避免外部样式影响 SillyTavern 主页面。
-        const shadowLink=ensureFontLink(shadow,SHADOW_FONT_LINK_ID,cssUrl);
-        if(fontFamily){
-            const quoted=JSON.stringify(fontFamily);
-            host.style.setProperty('--sw-font-user',`${quoted},-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif`);
-        }else host.style.removeProperty('--sw-font-user');
-        if(wait&&cssUrl){
-            await waitForFontStylesheet(shadowLink);
-        }
-    };
     const syncBaiBaiStatus=()=>{
         for(const purpose of ['simulation','observation']){
             const node=shadow.querySelector(`[data-baibai-status="${purpose}"]`);
@@ -562,8 +513,6 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         const fontScale=Math.max(80,Math.min(130,Math.round((Number(appearanceSettings.uiScalePercent)||100)/5)*5));
         const fontAdjust=fontScaleToAdjust(fontScale);
         shadow.innerHTML=`<style>${STYLES}</style><div class="backdrop" style="--sw-font-adjust:${fontAdjust}px"><section class="panel" role="dialog" aria-modal="true" aria-label="${settingsOpen?'世界动态设置':'世界动态'}"><header class="header"><div class="title">${pageTitle}</div><div class="version">${escapeHtml(version)}</div><div class="spacer"></div><button class="header-icon" type="button" data-action="settings-toggle" aria-label="${settingsButtonLabel}" title="${settingsButtonLabel}">${settingsButtonIcon}</button><button class="close" type="button" aria-label="关闭">×</button></header><main class="content">${mainHtml}</main>${navHtml}</section></div>`;
-        // innerHTML 会重建 Shadow DOM，所以字体链接必须在界面内容建立后重新挂载。
-        void applyPluginFont(appearanceSettings.uiFontUrl,appearanceSettings.uiFontFamily);
         restoreViewState(viewState);
         shadow.querySelector('.close')?.addEventListener('click',()=>onClose?.());
         shadow.querySelector('[data-action="settings-toggle"]')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;render({preserve:false});if(settingsOpen&&activeSettingsView==='reference')void ensureWorldEntriesLoaded()});
@@ -579,8 +528,6 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelector('[data-save-api-preset]')?.addEventListener('click',async()=>{try{const url=String(shadow.querySelector('[data-custom-api-url]')?.value||'').trim();const key=String(shadow.querySelector('[data-custom-api-key]')?.value||'');const model=String(shadow.querySelector('[data-custom-api-model]')?.value||'').trim();if(!url){notify('请先填写 API 地址','warning');return}const name=await openTextDialog({title:'保存 API 配置',description:'保存当前地址、Key 和模型，方便以后快速载入。',label:'配置名称',value:'',confirmLabel:'保存'});if(name===null)return;const preset=actions?.createApiPreset?.({name,url,key,model});if(!preset)throw new Error('无法创建 API 配置');const settings=actions?.getSettings?.()??{};actions?.updateSettings?.({apiPresets:[...(settings.apiPresets||[]),preset],apiPresetActiveId:preset.id});notify(`已保存 API 配置“${preset.name}”`,'success');render()}catch(error){console.error('[SceneWorld] api preset save failed',error);notify(`保存 API 配置失败：${error?.message||error}`,'error')}});
         shadow.querySelectorAll('[data-load-api-preset]').forEach(button=>button.addEventListener('click',()=>{try{const settings=actions?.getSettings?.()??{};const preset=(settings.apiPresets||[]).find(item=>item.id===button.dataset.loadApiPreset);if(!preset)throw new Error('这个 API 配置已经不存在');const set=(sel,value)=>{const node=shadow.querySelector(sel);if(node)node.value=value??''};set('[data-custom-api-url]',preset.url);set('[data-custom-api-key]',preset.key);set('[data-custom-api-model]',preset.model);actions?.updateSettings?.({apiPresetActiveId:preset.id});cachedCustomModels=[];shadow.querySelectorAll('[data-api-preset-row]').forEach(row=>row.classList.toggle('active',row.dataset.apiPresetRow===preset.id));notify(`已载入“${preset.name}”，点击“保存并生效”后生效`,'success')}catch(error){console.error('[SceneWorld] api preset load failed',error);notify(`载入 API 配置失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-delete-api-preset]').forEach(button=>button.addEventListener('click',async()=>{const settings=actions?.getSettings?.()??{};const preset=(settings.apiPresets||[]).find(item=>item.id===button.dataset.deleteApiPreset);if(!preset)return;const confirmed=await openConfirmDialog({title:'删除 API 配置',message:`确定删除“${preset.name}”吗？不会删除当前已经生效的 API 设置。`,confirmLabel:'删除',danger:true});if(!confirmed)return;try{actions?.updateSettings?.({apiPresets:(settings.apiPresets||[]).filter(item=>item.id!==preset.id),apiPresetActiveId:settings.apiPresetActiveId===preset.id?'':settings.apiPresetActiveId});notify('API 配置已删除','success');render()}catch(error){console.error('[SceneWorld] api preset delete failed',error);notify(`删除 API 配置失败：${error?.message||error}`,'error')}}));
-        shadow.querySelector('[data-apply-ui-font]')?.addEventListener('click',async()=>{try{const url=String(shadow.querySelector('[data-ui-font-url]')?.value||'').trim();const family=String(shadow.querySelector('[data-ui-font-family]')?.value||'').trim();if((url&&!family)||(!url&&family)){notify('请同时填写字体 CSS 地址和字体名称','warning');return}actions?.updateSettings?.({uiFontUrl:url,uiFontFamily:family});await applyPluginFont(url,family,{wait:Boolean(url&&family)});notify(family?'世界动态字体已加载并应用':'已使用系统字体','success')}catch(error){console.error('[SceneWorld] font apply failed',error);notify(`应用字体失败：${error?.message||error}`,'error')}});
-        shadow.querySelector('[data-reset-ui-font]')?.addEventListener('click',()=>{try{actions?.updateSettings?.({uiFontUrl:'',uiFontFamily:''});const url=shadow.querySelector('[data-ui-font-url]');const family=shadow.querySelector('[data-ui-font-family]');if(url)url.value='';if(family)family.value='';void applyPluginFont('','');notify('已恢复世界动态系统字体','success')}catch(error){console.error('[SceneWorld] font reset failed',error);notify(`恢复字体失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-model-max-output]')?.addEventListener('change',event=>{try{const value=Math.max(1024,Math.min(65536,Math.trunc(Number(event.currentTarget?.value)||8000)));event.currentTarget.value=String(value);actions?.updateSettings?.({modelMaxOutputTokens:value});preview=null;notify(`最大回复已设为 ${formatTokenCount(value)} Token`,'success')}catch(error){console.error('[SceneWorld] output token setting failed',error);notify(`保存最大回复设置失败：${error?.message||error}`,'error')}});
         shadow.querySelectorAll('[data-world-ref-setting]').forEach(input=>input.addEventListener('change',()=>{try{actions?.updateSettings?.({[input.dataset.worldRefSetting]:input.checked});notify('世界观参考设置已保存','success')}catch(error){console.error('[SceneWorld] settings update failed',error);notify(`保存世界观参考设置失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-world-entry]').forEach(input=>input.addEventListener('change',()=>{try{const purpose=input.dataset.worldEntryPurpose||'simulation';actions?.updateSettings?.({worldEntryId:input.dataset.worldEntry,worldEntryPurpose:purpose,worldEntryEnabled:input.checked});for(const book of worldEntryChoices[purpose]||[]){const entry=(book.entries||[]).find(item=>item.id===input.dataset.worldEntry);if(entry)entry.enabled=input.checked}syncWorldEntryCounts(purpose);notify(`${purpose==='observation'?'见闻':'世界推演'}世界书条目选择已保存`,'success')}catch(error){console.error('[SceneWorld] world entry setting failed',error);notify(`保存世界书条目选择失败：${error?.message||error}`,'error')}}));
