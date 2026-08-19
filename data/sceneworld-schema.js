@@ -51,7 +51,7 @@ function normalizeKnowledge(items) {
             evidence: text(item.evidence, 500),
             sourceMessageId: Number.isInteger(item.sourceMessageId) ? item.sourceMessageId : null,
         };
-    }).filter(item => item?.text);
+    }).filter(item => item?.text).slice(-80);
 }
 
 
@@ -472,10 +472,10 @@ export function normalizeSceneWorldState(value) {
         assistant: {
             ...empty.assistant,
             ...(source.assistant && typeof source.assistant === 'object' ? source.assistant : {}),
-            history: Array.isArray(source.assistant?.history) ? source.assistant.history : [],
-            guidance: Array.isArray(source.assistant?.guidance) ? source.assistant.guidance : [],
+            history: Array.isArray(source.assistant?.history) ? source.assistant.history.slice(-40) : [],
+            guidance: Array.isArray(source.assistant?.guidance) ? source.assistant.guidance.slice(-20) : [],
         },
-        snapshots: Array.isArray(source.snapshots) ? source.snapshots : [],
+        snapshots: Array.isArray(source.snapshots) ? source.snapshots.slice(-12) : [],
     };
 }
 

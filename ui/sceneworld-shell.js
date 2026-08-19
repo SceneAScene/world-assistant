@@ -79,6 +79,7 @@ const STYLES = `
 `;
 
 function escapeHtml(value) {
+function isLifecycleCancellation(error){return error?.code==='SCENEWORLD_TASK_CANCELLED'||error?.code==='SCENEWORLD_CHAT_CHANGED'||error?.name==='AbortError'}
     return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 }
 function iconSvg(name) {
@@ -537,7 +538,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelectorAll('[data-settings-view]').forEach(button=>button.addEventListener('click',()=>{activeSettingsView=button.dataset.settingsView||'simulation';render({preserve:false});if(activeSettingsView==='reference')void ensureWorldEntriesLoaded()}));
         shadow.querySelectorAll('[data-model-mode]').forEach(input=>input.addEventListener('change',()=>{try{actions?.updateSettings?.({modelConnectionMode:input.value==='custom'?'custom':'tavern'});preview=null;cachedCustomModels=[];render({preserve:false});notify(input.value==='custom'?'已切换到自定义 API':'已切换到酒馆当前连接','success')}catch(error){console.error('[SceneWorld] model mode update failed',error);notify(`保存模型连接方式失败：${error?.message||error}`,'error')}}));
         shadow.querySelector('[data-toggle-api-key]')?.addEventListener('click',event=>{const input=shadow.querySelector('[data-custom-api-key]');if(!input)return;const show=input.type==='password';input.type=show?'text':'password';event.currentTarget.textContent=show?'隐藏':'显示'});
-        shadow.querySelector('[data-fetch-api-models]')?.addEventListener('click',async event=>{const button=event.currentTarget;const url=String(shadow.querySelector('[data-custom-api-url]')?.value||'').trim();const key=String(shadow.querySelector('[data-custom-api-key]')?.value||'').trim();if(!url||!key){notify('请先填写 API 地址和 Key','warning');return}button.disabled=true;const old=button.textContent;button.textContent='读取中…';try{cachedCustomModels=await actions?.fetchCustomApiModels?.({url,key})||[];renderCustomModelList('');notify(`已读取 ${cachedCustomModels.length} 个模型`,'success')}catch(error){console.error('[SceneWorld] fetch models failed',error);notify(`读取模型失败：${error?.message||error}`,'error')}finally{button.disabled=false;button.textContent=old}});
+        shadow.querySelector('[data-fetch-api-models]')?.addEventListener('click',async event=>{const button=event.currentTarget;const url=String(shadow.querySelector('[data-custom-api-url]')?.value||'').trim();const key=String(shadow.querySelector('[data-custom-api-key]')?.value||'').trim();if(!url||!key){notify('请先填写 API 地址和 Key','warning');return}button.disabled=true;const old=button.textContent;button.textContent='读取中…';try{cachedCustomModels=await actions?.fetchCustomApiModels?.({url,key})||[];renderCustomModelList('');notify(`已读取 ${cachedCustomModels.length} 个模型`,'success')}catch(error){if(isLifecycleCancellation(error))return;console.error('[SceneWorld] fetch models failed',error);notify(`读取模型失败：${error?.message||error}`,'error')}finally{button.disabled=false;button.textContent=old}});
         shadow.querySelector('[data-api-model-search]')?.addEventListener('input',event=>renderCustomModelList(event.currentTarget.value));
         shadow.querySelector('[data-save-custom-api]')?.addEventListener('click',()=>{try{const url=String(shadow.querySelector('[data-custom-api-url]')?.value||'').trim();const key=String(shadow.querySelector('[data-custom-api-key]')?.value||'').trim();const model=String(shadow.querySelector('[data-custom-api-model]')?.value||'').trim();const timeout=Math.max(30,Math.min(600,Number(shadow.querySelector('[data-custom-api-timeout]')?.value)||180));if(!url||!key||!model){notify('请完整填写 API 地址、Key 和模型名称','warning');return}actions?.updateSettings?.({modelConnectionMode:'custom',customApiUrl:url,customApiKey:key,customApiModel:model,customApiTimeoutSec:timeout});preview=null;notify('自定义 API 已保存并生效','success')}catch(error){console.error('[SceneWorld] custom api save failed',error);notify(`保存模型设置失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-save-api-preset]')?.addEventListener('click',async()=>{try{const url=String(shadow.querySelector('[data-custom-api-url]')?.value||'').trim();const key=String(shadow.querySelector('[data-custom-api-key]')?.value||'');const model=String(shadow.querySelector('[data-custom-api-model]')?.value||'').trim();if(!url){notify('请先填写 API 地址','warning');return}const name=await openTextDialog({title:'保存 API 配置',description:'保存当前地址、Key 和模型，方便以后快速载入。',label:'配置名称',value:'',confirmLabel:'保存'});if(name===null)return;const preset=actions?.createApiPreset?.({name,url,key,model});if(!preset)throw new Error('无法创建 API 配置');const settings=actions?.getSettings?.()??{};actions?.updateSettings?.({apiPresets:[...(settings.apiPresets||[]),preset],apiPresetActiveId:preset.id});notify(`已保存 API 配置“${preset.name}”`,'success');render()}catch(error){console.error('[SceneWorld] api preset save failed',error);notify(`保存 API 配置失败：${error?.message||error}`,'error')}});
@@ -555,7 +556,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelector('[data-pending-batch-size]')?.addEventListener('change',event=>{try{const size=Number(event.currentTarget?.value)===5?5:10;actions?.updateSettings?.({maxPendingAssistantMessages:size});preview=null;notify(`单批推演已设为最多 ${size} 条 AI 正文`,'success')}catch(error){console.error('[SceneWorld] batch size setting failed',error);notify(`保存推演批次失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-initial-settlement-mode]')?.addEventListener('change',event=>{try{const mode=String(event.currentTarget?.value??'latest')==='from_floor'?'from_floor':'latest';actions?.updateSettings?.({initialSettlementMode:mode});preview=null;const wrap=shadow.querySelector('[data-initial-start-floor-wrap]');if(wrap)wrap.hidden=mode!=='from_floor';notify(mode==='from_floor'?'首次推演起点已切换为从指定楼层开始':'首次推演起点已切换为从当前开始','success')}catch(error){console.error('[SceneWorld] initial settlement mode failed',error);notify(`保存首次推演起点失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-initial-start-floor]')?.addEventListener('change',event=>{try{const floor=Math.max(0,Math.trunc(Number(event.currentTarget?.value)||0));actions?.updateSettings?.({initialStartFloor:floor});preview=null;notify(`首次推演起点已设为 #${floor}`,'success')}catch(error){console.error('[SceneWorld] initial start floor failed',error);notify(`保存起始楼层失败：${error?.message||error}`,'error')}});
-        shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',async()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged){notify(batch.anchorReason,'error');render();return}if(!batch?.hasPending){notify('当前没有新的 AI 正文需要推演','info');render();return}preview={...preview,tokenBudget:{status:'calculating'},tokenBudgetError:''};render();try{const budgetInfo=await actions?.inspectPendingBudget?.(batch);preview={...preview,tokenBudget:budgetInfo?.tokenBudget??null,tokenBudgetError:''};const status=preview?.tokenBudget?.status;if(status==='blocked')notify('本轮预计超出模型上下文安全范围，请查看 Token 预算','warning');else if(status==='near')notify('本轮 Token 预算接近上下文上限，建议留意','warning');else if(status==='unknown')notify('已估算输入 Token；当前连接的总上下文上限由服务端判断','info')}catch(error){console.error('[SceneWorld] token budget inspection failed',error);preview={...preview,tokenBudget:null,tokenBudgetError:String(error?.message||error)};notify(`Token 预算估算失败：${error?.message||error}`,'error')}}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待推演剧情失败：${error?.message||error}`,'error')}render()});
+        shadow.querySelector('[data-action="read-pending"]')?.addEventListener('click',async()=>{try{preview=actions?.inspectPendingNarrative?.()??null;const batch=preview?.batch;if(batch?.anchorChanged){notify(batch.anchorReason,'error');render();return}if(!batch?.hasPending){notify('当前没有新的 AI 正文需要推演','info');render();return}preview={...preview,tokenBudget:{status:'calculating'},tokenBudgetError:''};render();try{const budgetInfo=await actions?.inspectPendingBudget?.(batch);preview={...preview,tokenBudget:budgetInfo?.tokenBudget??null,tokenBudgetError:''};const status=preview?.tokenBudget?.status;if(status==='blocked')notify('本轮预计超出模型上下文安全范围，请查看 Token 预算','warning');else if(status==='near')notify('本轮 Token 预算接近上下文上限，建议留意','warning');else if(status==='unknown')notify('已估算输入 Token；当前连接的总上下文上限由服务端判断','info')}catch(error){if(isLifecycleCancellation(error)){preview=null;return}console.error('[SceneWorld] token budget inspection failed',error);preview={...preview,tokenBudget:null,tokenBudgetError:String(error?.message||error)};notify(`Token 预算估算失败：${error?.message||error}`,'error')}}catch(error){console.error('[SceneWorld] read pending narrative failed',error);notify(`读取待推演剧情失败：${error?.message||error}`,'error')}render()});
         shadow.querySelector('[data-action="simulate"]')?.addEventListener('click', async () => {
             const batch = preview?.batch;
             const budget = preview?.tokenBudget;
@@ -592,6 +593,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
                         : (baselineNow?`世界推演完成：#${result.batch.startId}～#${result.batch.endId}，当前世界基线已保持`:`世界推演完成：#${result.batch.startId}～#${result.batch.endId}`);
                     notify(summary + refText + bbText, 'success');
                 } catch (error) {
+                    if (isLifecycleCancellation(error)) return;
                     console.error('[SceneWorld] pending simulation failed', error);
                     notify(`世界推演失败：${error?.message || error}`, 'error');
                 }
@@ -623,6 +625,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
                         const refText = ref ? ` · 参考 ${ref.selectedEntries || 0} 条世界书条目` : '';
                         notify(`公共动态刷新完成：${result.newsCount || 0} 条新闻，${result.forumCount || 0} 条讨论${refText}`, 'success');
                     } catch (error) {
+                        if (isLifecycleCancellation(error)) return;
                         console.error('[SceneWorld] public info failed', error);
                         notify(`刷新公共动态失败：${error?.message || error}`, 'error');
                     }
@@ -654,6 +657,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
                     const refText = ref ? ` · 参考 ${ref.selectedEntries || 0} 条世界书条目` : '';
                     notify(`街巷漫游已更新：${result?.itemCount || 0} 条市井闲闻，${result?.placeCount || 0} 个地点${refText}`, 'success');
                 } catch (error) {
+                    if (isLifecycleCancellation(error)) return;
                     console.error('[SceneWorld] street opinion failed', error);
                     notify(`街巷漫游失败：${error?.message || error}`, 'error');
                 }
@@ -853,7 +857,7 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelector('[data-action="clear"]')?.addEventListener('click', async () => {
             const confirmed = await openConfirmDialog({
                 title: '清理全部世界动态数据',
-                message: '只删除当前聊天的 chatMetadata.世界动态数据。不会删除聊天正文，也不会触碰其他插件数据。',
+                message: '只删除当前聊天中的世界动态数据。不会删除聊天正文，也不会触碰其他插件数据。',
                 confirmLabel: '全部清理',
                 danger: true,
             });

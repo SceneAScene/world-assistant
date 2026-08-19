@@ -305,6 +305,39 @@ export function getCurrentChatId() {
     }
 }
 
+export function getCurrentChatIdentity() {
+    const context = getContextSafe();
+    if (!context) return '';
+    const chatId = getCurrentChatId();
+    const groupId = context.groupId ?? '';
+    const characterId = context.characterId ?? '';
+    if (!chatId && !groupId && (characterId === '' || characterId === null || characterId === undefined)) return '';
+    return JSON.stringify({
+        chatId: String(chatId ?? ''),
+        groupId: String(groupId ?? ''),
+        characterId: String(characterId ?? ''),
+    });
+}
+
+export function assertCurrentChatIdentity(expected) {
+    const wanted = String(expected ?? '');
+    const current = getCurrentChatIdentity();
+    if (!wanted || !current || wanted !== current) {
+        const error = new Error('任务执行期间当前聊天已经切换，本次结果未保存');
+        error.code = 'SCENEWORLD_CHAT_CHANGED';
+        throw error;
+    }
+    return current;
+}
+
+function throwIfTaskCancelled(signal) {
+    if (!signal?.aborted) return;
+    const error = new Error(String(signal.reason || '世界动态任务已取消'));
+    error.name = 'SceneWorldTaskCancelledError';
+    error.code = 'SCENEWORLD_TASK_CANCELLED';
+    throw error;
+}
+
 export function hasActiveChat() {
     const context = getContextSafe();
     if (!context || !context.chatMetadata) return false;
@@ -430,13 +463,16 @@ export async function inspectSceneWorldTokenBudget(messages) {
     });
 }
 
-export async function generateWithCurrentConnection(messages, { responseLength = 1800 } = {}) {
+export async function generateWithCurrentConnection(messages, { responseLength = 1800, signal = null } = {}) {
     if (!Array.isArray(messages) || messages.length === 0) throw new Error('生成请求没有可用提示词');
+    throwIfTaskCancelled(signal);
     const result = await generateRaw({
         prompt: messages,
         responseLength,
         trimNames: false,
     });
+    // 当前酒馆连接返回后仍需检查任务状态，防止禁用/切换聊天后的旧结果落盘。
+    throwIfTaskCancelled(signal);
     const text = String(result ?? '').trim();
     if (!text) throw new Error('模型没有返回内容，请检查 SillyTavern 当前连接与模型设置');
     return text;
@@ -460,7 +496,7 @@ function mapCustomApiError(status, raw) {
     return text ? `HTTP ${status}: ${text.slice(0, 160)}` : `HTTP ${status}`;
 }
 
-async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
+async function generateWithCustomApi(messages, { responseLength = 1800, signal = null } = {}) {
     if (!Array.isArray(messages) || messages.length === 0) throw new Error('生成请求没有可用提示词');
     const settings = getSceneWorldSettings();
     const url = normalizeCustomApiUrl(settings.customApiUrl);
@@ -472,11 +508,17 @@ async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
     const controller = new AbortController();
     const timeoutSec = Math.max(30, Math.min(600, Number(settings.customApiTimeoutSec) || 180));
     let timedOut = false;
+    const abortFromTask = () => {
+        try { controller.abort(signal?.reason || '世界动态任务已取消'); } catch {}
+    };
+    if (signal?.aborted) abortFromTask();
+    else signal?.addEventListener?.('abort', abortFromTask, { once: true });
     const timer = setTimeout(() => {
         timedOut = true;
         controller.abort();
     }, timeoutSec * 1000);
     try {
+        throwIfTaskCancelled(signal);
         const body = {
             chat_completion_source: 'openai',
             reverse_proxy: url,
@@ -497,12 +539,15 @@ async function generateWithCustomApi(messages, { responseLength = 1800 } = {}) {
             throw new Error(mapCustomApiError(res.status, raw));
         }
         const data = await res.json();
+        throwIfTaskCancelled(signal);
         return parseCustomApiCompletion(data).content;
     } catch (error) {
         if (timedOut) throw new Error(`自定义 API 请求超时（超过 ${timeoutSec} 秒）`);
+        if (signal?.aborted) throwIfTaskCancelled(signal);
         throw error;
     } finally {
         clearTimeout(timer);
+        signal?.removeEventListener?.('abort', abortFromTask);
     }
 }
 
@@ -520,12 +565,13 @@ export async function generateSceneWorldText(messages, options = {}) {
     return generateWithCurrentConnection(messages, resolved);
 }
 
-export async function fetchCustomApiModels({ url, key } = {}) {
+export async function fetchCustomApiModels({ url, key, signal = null } = {}) {
     const base = normalizeCustomApiUrl(url);
     const apiKey = String(key ?? '').trim();
     if (!base || !apiKey) throw new Error('请先填写 API 地址和 Key');
     const context = getContextSafe();
     if (!context?.getRequestHeaders) throw new Error('当前 SillyTavern 版本未提供模型列表代理接口');
+    throwIfTaskCancelled(signal);
     const res = await fetch('/api/backends/chat-completions/status', {
         method: 'POST',
         headers: context.getRequestHeaders(),
@@ -534,7 +580,9 @@ export async function fetchCustomApiModels({ url, key } = {}) {
             reverse_proxy: base,
             proxy_password: apiKey,
         }),
+        signal: signal || undefined,
     });
+    throwIfTaskCancelled(signal);
     if (!res.ok) {
         const raw = await res.text().catch(() => '');
         throw new Error(mapCustomApiError(res.status, raw));

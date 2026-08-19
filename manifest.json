@@ -6,12 +6,13 @@
   "js": "index.js",
   "css": "",
   "author": "SceneAScene",
-  "version": "2.0.0-alpha.32",
+  "version": "2.0.0",
   "homePage": "https://github.com/SceneAScene/world-assistant",
   "auto_update": true,
   "hooks": {
     "activate": "onActivate",
     "disable": "onDisable",
     "delete": "onDelete"
-  }
+  },
+  "minimum_client_version": "1.18.0"
 }

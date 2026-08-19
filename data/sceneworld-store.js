@@ -1,4 +1,6 @@
 import {
+    assertCurrentChatIdentity,
+    getCurrentChatIdentity,
     getCurrentChatMetadata,
     hasActiveChat,
     saveCurrentChatMetadata,
@@ -59,7 +61,8 @@ export async function createSceneWorldState() {
     }
 }
 
-export async function commitSceneWorldState(nextState) {
+export async function commitSceneWorldState(nextState, { expectedChatIdentity = '' } = {}) {
+    if (expectedChatIdentity) assertCurrentChatIdentity(expectedChatIdentity);
     if (!hasActiveChat()) throw new Error('请先打开一个角色聊天或群聊');
     const metadata = getCurrentChatMetadata();
     if (!metadata || typeof metadata !== 'object') throw new Error('当前聊天没有可用的 chatMetadata');
@@ -82,10 +85,12 @@ export async function commitSceneWorldState(nextState) {
 
 export async function updateSceneWorldState(mutator) {
     if (typeof mutator !== 'function') throw new TypeError('updateSceneWorldState requires a mutator');
+    const originChatIdentity = getCurrentChatIdentity();
+    if (!originChatIdentity) throw new Error('请先打开一个角色聊天或群聊');
     const current = readRaw();
     if (!current) throw new Error('当前聊天尚未创建 sceneworld 数据');
     const working = clone(current);
-    return commitSceneWorldState(mutator(working) ?? working);
+    return commitSceneWorldState(mutator(working) ?? working, { expectedChatIdentity: originChatIdentity });
 }
 
 export async function writeSceneWorldSection(section, value) {

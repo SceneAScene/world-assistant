@@ -2,7 +2,7 @@ import { createEmptySceneWorldState } from '../data/sceneworld-schema.js';
 import { commitSceneWorldState, readSceneWorldState } from '../data/sceneworld-store.js';
 import { buildManualSimulationMessages } from '../engine/sceneworld-prompts.js';
 import { applySimulationPayload, parseSimulationResponse, summarizeSimulationPayload } from '../engine/simulation-result.js';
-import { generateSceneWorldText, inspectSceneWorldTokenBudget, updateSceneWorldSettings } from '../platform/sillytavern.js';
+import { assertCurrentChatIdentity, generateSceneWorldText, getCurrentChatIdentity, inspectSceneWorldTokenBudget, updateSceneWorldSettings } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 import { readPendingNarrativeBatch } from './narrative-reader.js';
@@ -41,7 +41,11 @@ function assertBatchReady(batch, expectedBatch = null) {
     }
 }
 
-async function prepareSimulationRequest(expectedBatch = null) {
+async function prepareSimulationRequest(expectedBatch = null, taskContext = null) {
+    const originChatIdentity = getCurrentChatIdentity();
+    if (!originChatIdentity) throw new Error('请先打开一个角色聊天或群聊');
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const persisted = readSceneWorldState();
     const baselineEstablished = hasWorldBaseline(persisted);
     const batch = readPendingNarrativeBatch(syncForPendingRead(persisted));
@@ -58,6 +62,8 @@ async function prepareSimulationRequest(expectedBatch = null) {
         queryText: (batch.pendingMessages || []).map(item => item?.text || '').join('\n'),
         purpose: 'simulation',
     });
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const baibai = buildBaiBaiBookHistoryContext({ purpose: 'simulation' });
     const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
         ? '注意：记忆插件报告长期历史存在摘要缺口，只能作为不完整参考。'
@@ -70,7 +76,9 @@ async function prepareSimulationRequest(expectedBatch = null) {
         longTermHistoryNote,
     });
     const tokenBudget = await inspectSceneWorldTokenBudget(messages);
-    return { persisted, baselineEstablished, batch, base, reference, baibai, messages, tokenBudget };
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
+    return { persisted, baselineEstablished, batch, base, reference, baibai, messages, tokenBudget, originChatIdentity };
 }
 
 export function inspectPendingNarrative() {
@@ -79,8 +87,8 @@ export function inspectPendingNarrative() {
     return { batch, stateExists: !!state };
 }
 
-export async function inspectPendingSimulationBudget(expectedBatch = null) {
-    const prepared = await prepareSimulationRequest(expectedBatch);
+export async function inspectPendingSimulationBudget(expectedBatch = null, taskContext = null) {
+    const prepared = await prepareSimulationRequest(expectedBatch, taskContext);
     return {
         batch: prepared.batch,
         tokenBudget: prepared.tokenBudget,
@@ -89,8 +97,8 @@ export async function inspectPendingSimulationBudget(expectedBatch = null) {
     };
 }
 
-export async function simulatePendingNarrative(expectedBatch = null) {
-    const prepared = await prepareSimulationRequest(expectedBatch);
+export async function simulatePendingNarrative(expectedBatch = null, taskContext = null) {
+    const prepared = await prepareSimulationRequest(expectedBatch, taskContext);
     const {
         baselineEstablished,
         batch,
@@ -99,6 +107,7 @@ export async function simulatePendingNarrative(expectedBatch = null) {
         baibai,
         messages,
         tokenBudget,
+        originChatIdentity,
     } = prepared;
 
     if (!tokenBudget.canProceed) {
@@ -107,12 +116,16 @@ export async function simulatePendingNarrative(expectedBatch = null) {
 
     // 最大输出 Token 统一从“设置 → 模型 → 高级设置”读取。
     // 对推理模型要留出足够空间，因为隐藏推理也可能消耗输出预算。
-    const raw = await generateSceneWorldText(messages);
+    const raw = await generateSceneWorldText(messages, { signal: taskContext?.signal });
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const payload = parseSimulationResponse(raw, { requiresBaseline: !baselineEstablished });
     const changeSummary = summarizeSimulationPayload(payload);
     const source = batchSource(batch);
     const next = applySimulationPayload(base, payload, source);
-    const saved = await commitSceneWorldState(next);
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
+    const saved = await commitSceneWorldState(next, { expectedChatIdentity: originChatIdentity });
     // 指定楼层只用于启动首次回溯。成功建立锚点后自动恢复“从当前开始”。
     if (batch.isInitialBatch && batch.initialMode === 'from_floor') {
         updateSceneWorldSettings({ initialSettlementMode: 'latest' });

@@ -34,6 +34,8 @@ function extractMessage(message, contentFilter) {
 }
 
 function normalizeAssistantMessage(message, id, contentFilter) {
+    // 所有正文收集路径都必须先过角色检查。USER 永不进入世界推演事实源。
+    if (!isAssistantMessage(message)) return null;
     const extracted = extractNarrativeContent(message?.mes, contentFilter);
     const text = cleanText(extracted.text);
     if (!text) return null;

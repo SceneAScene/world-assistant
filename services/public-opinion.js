@@ -10,7 +10,7 @@ import {
     normalizeStreetWanderPayload,
     parsePublicOpinionResponse,
 } from '../engine/public-opinion-result.js';
-import { generateSceneWorldText, inspectSceneWorldTokenBudget } from '../platform/sillytavern.js';
+import { assertCurrentChatIdentity, generateSceneWorldText, getCurrentChatIdentity, inspectSceneWorldTokenBudget } from '../platform/sillytavern.js';
 import { buildWorldReferenceContext, formatWorldReferenceContext } from '../platform/world-reference.js';
 import { buildBaiBaiBookHistoryContext } from '../platform/baibai-book.js';
 
@@ -99,7 +99,11 @@ export function inspectPublicOpinion() {
     };
 }
 
-export async function refreshCanonicalPublicOpinion() {
+export async function refreshCanonicalPublicOpinion(taskContext = null) {
+    const originChatIdentity = getCurrentChatIdentity();
+    if (!originChatIdentity) throw new Error('请先打开一个角色聊天或群聊');
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const base = ensureState();
     const sources = eligiblePublicOpinionSources(base);
     const sourceFingerprint = publicOpinionSourceFingerprint(base);
@@ -107,6 +111,8 @@ export async function refreshCanonicalPublicOpinion() {
 
 
     const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base), purpose: 'observation' });
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const baibai = buildBaiBaiBookHistoryContext({ purpose: 'observation' });
     const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
         ? '注意：记忆插件报告长期历史存在摘要缺口，只能作为不完整的较早背景。'
@@ -118,10 +124,14 @@ export async function refreshCanonicalPublicOpinion() {
         longTermHistoryNote,
     });
     const tokenBudget = await inspectSceneWorldTokenBudget(messages);
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     if (!tokenBudget.canProceed) {
         throw new Error(`见闻生成预计需要约 ${tokenBudget.totalTokens} Token，超过当前上下文安全预算 ${tokenBudget.safetyLimit}。请减少见闻参考条目、关闭记忆插件长期历史，或切换上下文更充足的模型。`);
     }
-    const raw = await generateSceneWorldText(messages);
+    const raw = await generateSceneWorldText(messages, { signal: taskContext?.signal });
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const payload = parsePublicOpinionResponse(raw, { kind: 'canonical' });
     const normalized = normalizeCanonicalOpinionPayload(payload, { sources, generatedAt });
 
@@ -140,7 +150,9 @@ export async function refreshCanonicalPublicOpinion() {
         streetUpdatedAt: next.publicOpinion?.streetUpdatedAt ?? null,
         street: Array.isArray(next.publicOpinion?.street) ? next.publicOpinion.street : [],
     };
-    const saved = await commitSceneWorldState(next);
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
+    const saved = await commitSceneWorldState(next, { expectedChatIdentity: originChatIdentity });
     return {
         calledModel: true,
         state: saved,
@@ -154,11 +166,17 @@ export async function refreshCanonicalPublicOpinion() {
     };
 }
 
-export async function refreshStreetPublicOpinion() {
+export async function refreshStreetPublicOpinion(taskContext = null) {
+    const originChatIdentity = getCurrentChatIdentity();
+    if (!originChatIdentity) throw new Error('请先打开一个角色聊天或群聊');
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const base = ensureState();
     const stateUpdatedAt = String(base.updatedAt || '');
     const generatedAt = new Date().toISOString();
     const reference = await buildWorldReferenceContext({ state: base, queryText: knownLocationCorpus(base), purpose: 'observation' });
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const baibai = buildBaiBaiBookHistoryContext({ purpose: 'observation' });
     const longTermHistoryNote = baibai.stats?.enabled && baibai.stats?.available && baibai.stats?.complete === false
         ? '注意：记忆插件报告长期历史存在摘要缺口，只能作为不完整的较早背景。'
@@ -170,10 +188,14 @@ export async function refreshStreetPublicOpinion() {
         longTermHistoryNote,
     });
     const tokenBudget = await inspectSceneWorldTokenBudget(messages);
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     if (!tokenBudget.canProceed) {
         throw new Error(`见闻生成预计需要约 ${tokenBudget.totalTokens} Token，超过当前上下文安全预算 ${tokenBudget.safetyLimit}。请减少见闻参考条目、关闭记忆插件长期历史，或切换上下文更充足的模型。`);
     }
-    const raw = await generateSceneWorldText(messages);
+    const raw = await generateSceneWorldText(messages, { signal: taskContext?.signal });
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
     const payload = parsePublicOpinionResponse(raw, { kind: 'street' });
     const normalized = normalizeStreetWanderPayload(payload, { generatedAt });
     if (normalized.street.length < 3 || normalized.places.length < 3) {
@@ -201,6 +223,8 @@ export async function refreshStreetPublicOpinion() {
     next.guidance.actions = Array.isArray(next.guidance.actions) ? next.guidance.actions : [];
     next.guidance.actionsUpdatedAt = next.guidance.actionsUpdatedAt ?? null;
     next.guidance.actionsSourceMessageId = Number.isInteger(next.guidance.actionsSourceMessageId) ? next.guidance.actionsSourceMessageId : null;
-    const saved = await commitSceneWorldState(next);
+    taskContext?.assertActive?.();
+    assertCurrentChatIdentity(originChatIdentity);
+    const saved = await commitSceneWorldState(next, { expectedChatIdentity: originChatIdentity });
     return { calledModel: true, state: saved, raw, itemCount: normalized.street.length, placeCount: next.guidance.places.length, baseUpdatedAt: stateUpdatedAt, worldReference: reference.stats, baibai: baibai.stats, tokenBudget };
 }

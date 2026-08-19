@@ -1,3 +1,12 @@
+export const SCENEWORLD_TASK_CANCELLED = 'SCENEWORLD_TASK_CANCELLED';
+
+function cancelledError(reason = '世界动态任务已取消') {
+    const error = new Error(String(reason || '世界动态任务已取消'));
+    error.name = 'SceneWorldTaskCancelledError';
+    error.code = SCENEWORLD_TASK_CANCELLED;
+    return error;
+}
+
 export class TaskManager {
     #tasks = new Map();
 
@@ -7,15 +16,29 @@ export class TaskManager {
 
     async run(key, task) {
         if (!key || typeof task !== 'function') throw new TypeError('TaskManager.run requires key and task');
-        if (this.#tasks.has(key)) return this.#tasks.get(key);
-        const promise = Promise.resolve().then(task).finally(() => {
-            if (this.#tasks.get(key) === promise) this.#tasks.delete(key);
+        const existing = this.#tasks.get(key);
+        if (existing) return existing.promise;
+
+        const controller = new AbortController();
+        const context = Object.freeze({
+            signal: controller.signal,
+            assertActive() {
+                if (controller.signal.aborted) throw cancelledError(controller.signal.reason);
+            },
         });
-        this.#tasks.set(key, promise);
+        const record = { controller, promise: null };
+        const promise = Promise.resolve().then(() => task(context)).finally(() => {
+            if (this.#tasks.get(key) === record) this.#tasks.delete(key);
+        });
+        record.promise = promise;
+        this.#tasks.set(key, record);
         return promise;
     }
 
-    clear() {
+    clear(reason = '世界动态任务已取消') {
+        for (const record of this.#tasks.values()) {
+            try { record.controller.abort(reason); } catch {}
+        }
         this.#tasks.clear();
     }
 

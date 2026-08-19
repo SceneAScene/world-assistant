@@ -25,7 +25,10 @@ export function createSceneWorldController({ version }) {
         const { source, types } = getSceneWorldEventApi();
         const chatChanged = types?.CHAT_CHANGED ?? types?.chat_changed;
         if (source && chatChanged) {
-            events.onEmitter(source, chatChanged, () => shell?.onChatChanged?.());
+            events.onEmitter(source, chatChanged, () => {
+                tasks.clear('当前聊天已切换，本次任务已取消');
+                shell?.onChatChanged?.();
+            });
         }
 
         // 记忆插件可能晚于世界动态加载。监听其公开就绪事件，避免设置页永久停在“未检测到”。
@@ -52,11 +55,11 @@ export function createSceneWorldController({ version }) {
             onClose: close,
             actions: {
                 inspectPendingNarrative,
-                inspectPendingBudget: expectedBatch => tasks.run('token-budget', () => inspectPendingSimulationBudget(expectedBatch)),
-                simulatePending: expectedBatch => tasks.run('manual-simulation', () => simulatePendingNarrative(expectedBatch)),
+                inspectPendingBudget: expectedBatch => tasks.run('token-budget', task => inspectPendingSimulationBudget(expectedBatch, task)),
+                simulatePending: expectedBatch => tasks.run('manual-simulation', task => simulatePendingNarrative(expectedBatch, task)),
                 inspectPublicOpinion,
-                refreshPublicOpinion: () => tasks.run('public-opinion', refreshCanonicalPublicOpinion),
-                refreshStreetOpinion: () => tasks.run('public-opinion-street', refreshStreetPublicOpinion),
+                refreshPublicOpinion: () => tasks.run('public-opinion', task => refreshCanonicalPublicOpinion(task)),
+                refreshStreetOpinion: () => tasks.run('public-opinion-street', task => refreshStreetPublicOpinion(task)),
                 putTextIntoChatInput,
                 getChatInputText: () => {
                     const target = document.querySelector('#send_textarea')
@@ -68,7 +71,7 @@ export function createSceneWorldController({ version }) {
                 getModelContextLimit: () => getSceneWorldContextLimit(getSceneWorldSettings()),
                 getWorldEntries: getCurrentWorldEntryChoices,
                 updateSettings: updateSceneWorldSettings,
-                fetchCustomApiModels: config => tasks.run('custom-api-models', () => fetchCustomApiModels(config)),
+                fetchCustomApiModels: config => tasks.run('custom-api-models', task => fetchCustomApiModels({ ...config, signal: task.signal })),
                 createApiPreset: createApiPresetSnapshot,
                 favoriteOpinion: (sourceType, sourceId) => tasks.run(`favorite:${sourceType}:${sourceId}`, () => favoriteOpinionItem(sourceType, sourceId)),
                 removeChronicle: id => tasks.run(`chronicle-remove:${id}`, () => removeChronicleItem(id)),
@@ -92,7 +95,7 @@ export function createSceneWorldController({ version }) {
     function destroy() {
         close();
         events.clear();
-        tasks.clear();
+        tasks.clear('世界动态已关闭，本次任务已取消');
         if (globalThis.sceneworld === publicApi) delete globalThis.sceneworld;
         publicApi = null;
         initialized = false;
