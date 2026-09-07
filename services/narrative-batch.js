@@ -1,4 +1,4 @@
-import { extractNarrativeContent, narrativeFilterSignature } from './narrative-content.js';
+import { extractNarrativeContent, narrativeFilterSignature, normalizeNarrativeReadMode } from './narrative-content.js';
 
 export const PENDING_CONTEXT_LIMITS = Object.freeze({
     // 每次世界推演最多处理 10 条 AI 正文，避免高楼层聊天首次启用时整段回灌。
@@ -48,6 +48,7 @@ function normalizeAssistantMessage(message, id, contentFilter) {
         timestamp: message?.send_date ?? null,
         matchedTags: extracted.matchedTags,
         usedFallback: extracted.usedFallback,
+        contentReadMode: extracted.mode,
     };
 }
 
@@ -138,6 +139,7 @@ function emptyBatch({
     ignoredAssistantCount = 0,
     initialMode = 'latest',
     requestedStartFloor = 0,
+    contentReadMode = 'include_tags',
 } = {}) {
     return Object.freeze({
         hasPending: false,
@@ -155,6 +157,7 @@ function emptyBatch({
         overBudget: false,
         limits: { ...PENDING_CONTEXT_LIMITS },
         contentFilterSignature,
+        contentReadMode,
         pendingMessages: [],
         isInitialBatch: lastProcessedAssistantMessageId === null,
         initialMode,
@@ -170,8 +173,9 @@ export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options
     const maxPendingAssistantMessages = Math.max(1, Math.min(50, Math.trunc(Number(limits.maxPendingAssistantMessages) || 10)));
     limits.maxPendingAssistantMessages = maxPendingAssistantMessages;
     const contentFilter = {
+        mode: normalizeNarrativeReadMode(options?.contentFilter?.mode),
         tags: Array.isArray(options?.contentFilter?.tags) ? options.contentFilter.tags : ['content'],
-        fallbackToWholeMessage: options?.contentFilter?.fallbackToWholeMessage === true,
+        excludedTags: Array.isArray(options?.contentFilter?.excludedTags) ? options.contentFilter.excludedTags : [],
     };
     const filterSignature = narrativeFilterSignature(contentFilter);
     const initialSettlement = normalizeInitialSettlement(options);
@@ -193,22 +197,14 @@ export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options
                 contentFilterSignature: filterSignature,
                 initialMode: initialSettlement.mode,
                 requestedStartFloor: initialSettlement.startFloor,
+                contentReadMode: contentFilter.mode,
             });
         }
-        const extractedAnchor = normalizeAssistantMessage(anchor, lastProcessedAssistantMessageId, contentFilter);
-        if (!extractedAnchor) {
-            if (previousFilterSignature && previousFilterSignature !== filterSignature) {
-                return emptyBatch({
-                    lastProcessedAssistantMessageId,
-                    anchorChanged: true,
-                    anchorReason: '正文标签设置已改变，而上次结算锚点在新标签规则下没有正文。请确认标签后再继续。',
-                    contentFilterSignature: filterSignature,
-                    initialMode: initialSettlement.mode,
-                    requestedStartFloor: initialSettlement.startFloor,
-                });
-            }
-        }
-        if (lastProcessedAssistantFingerprint) {
+        // 正文读取规则可以在同一聊天中切换。规则变化只作用于锚点之后的新 AI 回复，
+        // 不要求用新规则重新解释已经结算过的锚点，否则更换预设/标签会被无意义地锁死。
+        const filterChanged = Boolean(previousFilterSignature && previousFilterSignature !== filterSignature);
+        const extractedAnchor = filterChanged ? null : normalizeAssistantMessage(anchor, lastProcessedAssistantMessageId, contentFilter);
+        if (lastProcessedAssistantFingerprint && !filterChanged) {
             const extractedFingerprint = extractedAnchor?.fingerprint ?? '';
             const rawFingerprint = fingerprintText(anchor.mes);
             const matchesLegacyRaw = !previousFilterSignature && lastProcessedAssistantFingerprint === rawFingerprint;
@@ -220,6 +216,7 @@ export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options
                     contentFilterSignature: filterSignature,
                     initialMode: initialSettlement.mode,
                     requestedStartFloor: initialSettlement.startFloor,
+                    contentReadMode: contentFilter.mode,
                 });
             }
         }
@@ -271,6 +268,7 @@ export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options
             ignoredAssistantCount,
             initialMode: initialSettlement.mode,
             requestedStartFloor: initialSettlement.startFloor,
+            contentReadMode: contentFilter.mode,
         });
     }
 
@@ -295,6 +293,7 @@ export function buildPendingNarrativeBatchFromChat(chatInput, sync = {}, options
         overBudget,
         limits,
         contentFilterSignature: filterSignature,
+        contentReadMode: contentFilter.mode,
         pendingMessages,
         isInitialBatch,
         initialMode: initialSettlement.mode,

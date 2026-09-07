@@ -6,8 +6,9 @@ export function readPendingNarrativeBatch(sync = {}, options = {}) {
     return buildPendingNarrativeBatchFromChat(getCurrentChatMessages(), sync, {
         ...options,
         contentFilter: {
+            mode: settings.contentReadMode,
             tags: settings.contentTags,
-            fallbackToWholeMessage: settings.contentFallbackToWholeMessage,
+            excludedTags: settings.excludedContentTags,
         },
         initialSettlement: {
             mode: settings.initialSettlementMode,

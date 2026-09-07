@@ -20,7 +20,7 @@ const SETTINGS_TABS = [
 const HELP_TOPICS = Object.freeze({
     home: {
         title: '关于“此刻”',
-        message: '“此刻”是世界动态的主控制页。先读取待推演剧情，再手动执行世界推演。\n\n“当前世界”是剧情在这一刻的基础状态，不要求发生重大事件；首次推演必须建立，后续在状态变化时更新。新闻是否出现则另由公开事件决定。\n\n世界推演只读取设置允许的 AI 正文标签范围，并结合当前世界状态、最近 5 次动态、持续性世界事实，以及可选的角色描述、世界书条目和记忆插件长期历史。',
+        message: '“此刻”是世界动态的主控制页。先读取待推演剧情，再手动执行世界推演。\n\n“当前世界”是剧情在这一刻的基础状态，不要求发生重大事件；首次推演必须建立，后续在状态变化时更新。新闻是否出现则另由公开事件决定。\n\n世界推演只读取设置允许的 AI 正文范围，并结合当前世界状态、最近 5 次动态、持续性世界事实，以及可选的角色描述、世界书条目和记忆插件长期历史。',
     },
     people: {
         title: '关于“人物”',
@@ -147,7 +147,10 @@ function pendingPreviewHtml(preview) {
     }else if(batch.hasMoreAfterBatch){
         windowNote=`<div class="note">本轮已按上限截成 ${batch.limits.maxPendingAssistantMessages||10} 条。后面还有未推演正文，完成后再次“读取待推演剧情”即可继续下一批。</div>`;
     }
-    return `<div class="status-grid"><div class="status"><b>上次推演</b><span>${previous}</span></div><div class="status"><b>本批范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>本批正文</b><span>${batch.assistantCount} / ${batch.limits.maxPendingAssistantMessages||10} 条 AI 正文${batch.ignoredAssistantCount?` · 忽略 ${batch.ignoredAssistantCount} 条未命中标签的 AI 消息`:''}</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${windowNote}${budgetNote}<details class="preview-details" open><summary>预览本批标签内正文</summary>${transcriptHtml(batch.pendingMessages)}</details>`;
+    const exclusionMode=batch.contentReadMode==='exclude_tags';
+    const ignoredLabel=exclusionMode?'排除后无正文':'未命中正文标签';
+    const previewLabel=exclusionMode?'预览本批排除后正文':'预览本批正文标签内容';
+    return `<div class="status-grid"><div class="status"><b>上次推演</b><span>${previous}</span></div><div class="status"><b>本批范围</b><span>#${batch.startId}～#${batch.endId}</span></div><div class="status"><b>本批正文</b><span>${batch.assistantCount} / ${batch.limits.maxPendingAssistantMessages||10} 条 AI 正文${batch.ignoredAssistantCount?` · 忽略 ${batch.ignoredAssistantCount} 条${ignoredLabel}的 AI 消息`:''}</span></div><div class="status"><b>正文规模</b><span>${batch.characters} 字符</span></div></div>${windowNote}${budgetNote}<details class="preview-details" open><summary>${previewLabel}</summary>${transcriptHtml(batch.pendingMessages)}</details>`;
 }
 
 function actionSuggestionsHtml(state, busy) {
@@ -218,9 +221,25 @@ function initialSettlementSettingsHtml(actions, busy, state) {
 }
 function narrativeScopeSettingsHtml(actions, busy) {
     const settings = actions?.getSettings?.() ?? {};
+    const mode = settings.contentReadMode === 'exclude_tags' ? 'exclude_tags' : 'include_tags';
     const tags = Array.isArray(settings.contentTags) && settings.contentTags.length ? settings.contentTags : ['content'];
-    const display = tags.join(', ');
-    return `<div class="card"><h2>正文读取范围</h2><p>世界动态只把完整标签范围内的 AI 文本当作剧情正文。默认读取 &lt;content&gt;...&lt;/content&gt;，标签外的思维链、状态栏、行动选项、小剧场等不会进入世界推演。</p><label><span class="meta">正文标签名（多个用逗号或换行分隔）</span><input class="setting-text" type="text" data-content-tags value="${escapeHtml(display)}" placeholder="content" ${busy?'disabled':''}></label><div class="note">例如填写 <b>content, story</b> 时，会读取 &lt;content&gt; 和 &lt;story&gt; 的完整闭合范围。修改后立即保存到世界动态设置。</div></div>`;
+    const excludedTags = Array.isArray(settings.excludedContentTags) ? settings.excludedContentTags : ['fengxun'];
+    const includeDisplay = tags.join(', ');
+    const excludeDisplay = excludedTags.join(', ');
+    return `<div class="card"><h2>正文读取范围</h2><p>根据当前预设的输出格式选择一种读取方式。两种模式都只读取 AI 回复，USER 与系统消息不会进入世界推演。</p>
+        <div class="model-mode narrative-mode">
+            <label><input type="radio" name="sw-content-read-mode" value="include_tags" data-content-read-mode ${mode==='include_tags'?'checked':''} ${busy?'disabled':''}><span><b>指定正文标签</b><small>只读取指定完整标签内部的文本。适合使用 &lt;content&gt;、&lt;story&gt; 等正文包装的预设。</small></span></label>
+            <label><input type="radio" name="sw-content-read-mode" value="exclude_tags" data-content-read-mode ${mode==='exclude_tags'?'checked':''} ${busy?'disabled':''}><span><b>排除非正文标签</b><small>先读取整条 AI 回复，再删除指定标签及其中内容，剩余部分作为正文。适合没有正文包装标签的预设。</small></span></label>
+        </div>
+        <div data-content-include-wrap ${mode==='include_tags'?'':'hidden'}>
+            <label><span class="meta">正文标签名（多个用逗号或换行分隔）</span><input class="setting-text" type="text" data-content-tags value="${escapeHtml(includeDisplay)}" placeholder="content" ${busy?'disabled':''}></label>
+            <div class="note">例如填写 <b>content, story</b> 时，只读取 &lt;content&gt;...&lt;/content&gt; 和 &lt;story&gt;...&lt;/story&gt; 的完整范围；标签外内容不会进入推演。</div>
+        </div>
+        <div data-content-exclude-wrap ${mode==='exclude_tags'?'':'hidden'}>
+            <label><span class="meta">排除标签名（多个用逗号或换行分隔）</span><input class="setting-text" type="text" data-excluded-content-tags value="${escapeHtml(excludeDisplay)}" placeholder="fengxun, status, options" ${busy?'disabled':''}></label>
+            <div class="note warning">例如填写 <b>fengxun, status</b> 时，会先删除 &lt;fengxun&gt;...&lt;/fengxun&gt; 和 &lt;status&gt;...&lt;/status&gt; 的完整标签块，再把其余 AI 文本作为正文。没有列在这里的状态栏、选项或其他附加内容也会被视为正文；如果留空，则整条 AI 回复都作为正文。</div>
+        </div>
+    </div>`;
 }
 
 function homeHtml(version, preview, busy, actions) {
@@ -233,7 +252,7 @@ function homeHtml(version, preview, busy, actions) {
         ${state?currentWorldHtml(state):`<div class="card soft"><h2>尚未建立当前世界</h2><p>第一次使用时，先读取待推演剧情并完成一次世界推演。旧聊天默认只从最近最多 10 条 AI 正文开始，不会回灌全部历史。</p></div>`}
         ${actionSuggestionsHtml(state,busy)}
         <div class="card"><div class="card-header"><div><h2>世界推演</h2><div class="card-subtitle">读取只在本地进行；真正推演时才调用一次模型</div></div>${busy?'<span class="meta-pill neutral">处理中</span>':''}</div><div class="status-grid"><div class="status compact"><b>正文同步</b><span>${escapeHtml(latestSyncText(state))}</span></div><div class="status compact"><b>剧情时间</b><span>${escapeHtml(state?.sync?.lastProcessedStoryTime||state?.world?.time||'尚未识别')}</span></div><div class="status compact"><b>最近推演</b><span>${state?.sync?.lastProcessedAt?escapeHtml(timeLabel(state.sync.lastProcessedAt)):'尚未推演'}</span></div><div class="status compact"><b>当前数据</b><span>${info.dataExists?formatBytes(info.totalBytes):'尚未创建'}</span></div></div><div class="actions"><button class="action" type="button" data-action="read-pending" ${busy?'disabled':''}>读取待推演剧情</button><button class="action primary" type="button" data-action="simulate" ${canSimulate?'':'disabled'}>推演本批剧情</button></div>${pendingPreviewHtml(preview)}</div>
-        <div class="note"><div class="tip"><span class="tip-mark">i</span><span>世界动态当前仅进行手动推演。调整正文标签、首次结算起点，开启世界书条目或记忆插件前往设置中管理。</span></div></div>
+        <div class="note"><div class="tip"><span class="tip-mark">i</span><span>世界动态当前仅进行手动推演。调整正文读取方式、首次结算起点，开启世界书条目或记忆插件前往设置中管理。</span></div></div>
     </div>`;
 }
 
@@ -534,7 +553,9 @@ export function createSceneWorldShell({ version, onClose, actions }) {
         shadow.querySelectorAll('[data-world-entry-batch]').forEach(button=>button.addEventListener('click',()=>{try{const purpose=button.dataset.worldEntryPurpose||'simulation';const ids=JSON.parse(button.dataset.worldEntryIds||'[]');const enabled=button.dataset.worldEntryBatch==='all';actions?.updateSettings?.({worldEntryIds:ids,worldEntryPurpose:purpose,worldEntryEnabled:enabled});for(const book of worldEntryChoices[purpose]||[]){for(const entry of book.entries||[]){if(ids.includes(entry.id))entry.enabled=enabled}}const detail=button.closest('details');detail?.querySelectorAll('[data-world-entry]').forEach(input=>{input.checked=enabled});syncWorldEntryCounts(purpose);notify(`${enabled?'已全选':'已清空'}这本世界书的 ${purpose==='observation'?'见闻':'世界推演'}条目`,'success')}catch(error){console.error('[SceneWorld] world entry batch setting failed',error);notify(`批量保存世界书条目失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-font-scale-step]').forEach(button=>button.addEventListener('click',()=>{try{const current=Math.max(80,Math.min(130,Math.round((Number(actions?.getSettings?.()?.uiScalePercent)||100)/5)*5));const step=Number(button.dataset.fontScaleStep)||0;const value=Math.max(80,Math.min(130,current+step));actions?.updateSettings?.({uiScalePercent:value});applyFontScale(value);notify(`世界动态界面大小已调整为 ${value}%`,'success')}catch(error){console.error('[SceneWorld] font setting failed',error);notify(`保存界面大小失败：${error?.message||error}`,'error')}}));
         shadow.querySelectorAll('[data-help-topic]').forEach(button=>button.addEventListener('click',()=>{const topic=HELP_TOPICS[button.dataset.helpTopic];if(topic)void dialogs.info({title:topic.title,message:topic.message})}));
+        shadow.querySelectorAll('[data-content-read-mode]').forEach(input=>input.addEventListener('change',()=>{try{const mode=input.value==='exclude_tags'?'exclude_tags':'include_tags';actions?.updateSettings?.({contentReadMode:mode});preview=null;render({preserve:false});notify(mode==='exclude_tags'?'正文读取已切换为“排除非正文标签”':'正文读取已切换为“指定正文标签”','success')}catch(error){console.error('[SceneWorld] content read mode update failed',error);notify(`保存正文读取方式失败：${error?.message||error}`,'error')}}));
         shadow.querySelector('[data-content-tags]')?.addEventListener('change',event=>{try{const value=String(event.currentTarget?.value??'').trim();actions?.updateSettings?.({contentTags:value});preview=null;notify('正文标签设置已保存','success')}catch(error){console.error('[SceneWorld] content tag settings update failed',error);notify(`保存正文标签失败：${error?.message||error}`,'error')}});
+        shadow.querySelector('[data-excluded-content-tags]')?.addEventListener('change',event=>{try{const value=String(event.currentTarget?.value??'').trim();actions?.updateSettings?.({excludedContentTags:value});preview=null;notify(value?'排除标签设置已保存':'排除标签已清空；当前会把整条 AI 回复作为正文','success')}catch(error){console.error('[SceneWorld] excluded content tag settings update failed',error);notify(`保存排除标签失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-pending-batch-size]')?.addEventListener('change',event=>{try{const size=Number(event.currentTarget?.value)===5?5:10;actions?.updateSettings?.({maxPendingAssistantMessages:size});preview=null;notify(`单批推演已设为最多 ${size} 条 AI 正文`,'success')}catch(error){console.error('[SceneWorld] batch size setting failed',error);notify(`保存推演批次失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-initial-settlement-mode]')?.addEventListener('change',event=>{try{const mode=String(event.currentTarget?.value??'latest')==='from_floor'?'from_floor':'latest';actions?.updateSettings?.({initialSettlementMode:mode});preview=null;const wrap=shadow.querySelector('[data-initial-start-floor-wrap]');if(wrap)wrap.hidden=mode!=='from_floor';notify(mode==='from_floor'?'首次推演起点已切换为从指定楼层开始':'首次推演起点已切换为从当前开始','success')}catch(error){console.error('[SceneWorld] initial settlement mode failed',error);notify(`保存首次推演起点失败：${error?.message||error}`,'error')}});
         shadow.querySelector('[data-initial-start-floor]')?.addEventListener('change',event=>{try{const floor=Math.max(0,Math.trunc(Number(event.currentTarget?.value)||0));actions?.updateSettings?.({initialStartFloor:floor});preview=null;notify(`首次推演起点已设为 #${floor}`,'success')}catch(error){console.error('[SceneWorld] initial start floor failed',error);notify(`保存起始楼层失败：${error?.message||error}`,'error')}});

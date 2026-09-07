@@ -9,8 +9,9 @@ export const DEFAULT_SCENEWORLD_SETTINGS = Object.freeze({
     observationWorldEntrySelection: Object.freeze({}),
     simulationWorldInfoMaxChars: 16000,
     observationWorldInfoMaxChars: 16000,
+    contentReadMode: 'include_tags', // include_tags | exclude_tags
     contentTags: Object.freeze(['content']),
-    contentFallbackToWholeMessage: false,
+    excludedContentTags: Object.freeze(['fengxun']),
     initialSettlementMode: 'latest',
     initialStartFloor: 0,
     maxPendingAssistantMessages: 10,
@@ -114,7 +115,11 @@ export function getSceneWorldSettings() {
     const raw = extension_settings?.sceneworld;
     const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     const merged = { ...DEFAULT_SCENEWORLD_SETTINGS, ...source };
+    const contentReadMode = String(merged.contentReadMode ?? '').trim().toLowerCase() === 'exclude_tags' ? 'exclude_tags' : 'include_tags';
     const contentTags = normalizeContentTags(merged.contentTags);
+    const excludedContentTags = 'excludedContentTags' in source
+        ? normalizeContentTags(source.excludedContentTags)
+        : [...DEFAULT_SCENEWORLD_SETTINGS.excludedContentTags];
 
     const includeCharacterDescription = 'includeCharacterDescription' in source
         ? source.includeCharacterDescription !== false
@@ -156,8 +161,9 @@ export function getSceneWorldSettings() {
         observationWorldEntrySelection: normalizeEntrySelection(source.observationWorldEntrySelection),
         simulationWorldInfoMaxChars,
         observationWorldInfoMaxChars,
+        contentReadMode,
         contentTags: contentTags.length ? contentTags : ['content'],
-        contentFallbackToWholeMessage: merged.contentFallbackToWholeMessage === true,
+        excludedContentTags,
         initialSettlementMode,
         initialStartFloor,
         maxPendingAssistantMessages,
@@ -176,6 +182,7 @@ export function getSceneWorldSettings() {
     };
     delete normalized.uiFontUrl;
     delete normalized.uiFontFamily;
+    delete normalized.contentFallbackToWholeMessage;
     return normalized;
 }
 
@@ -189,7 +196,7 @@ export function updateSceneWorldSettings(patch) {
         apiPresets: current.apiPresets.map(item => ({ ...item })),
     };
 
-    for (const key of ['includeCharacterDescription', 'contentFallbackToWholeMessage', 'simulationUseBaiBaiBook', 'observationUseBaiBaiBook']) {
+    for (const key of ['includeCharacterDescription', 'simulationUseBaiBaiBook', 'observationUseBaiBaiBook']) {
         if (key in patch) next[key] = patch[key] === true;
     }
     for (const [key, min, max] of [
@@ -207,6 +214,7 @@ export function updateSceneWorldSettings(patch) {
     if ('initialSettlementMode' in patch) next.initialSettlementMode = String(patch.initialSettlementMode ?? '').trim().toLowerCase() === 'from_floor' ? 'from_floor' : 'latest';
     if ('initialStartFloor' in patch && Number.isFinite(Number(patch.initialStartFloor))) next.initialStartFloor = Math.max(0, Math.trunc(Number(patch.initialStartFloor)));
     if ('modelConnectionMode' in patch) next.modelConnectionMode = String(patch.modelConnectionMode || '').toLowerCase() === 'custom' ? 'custom' : 'tavern';
+    if ('contentReadMode' in patch) next.contentReadMode = String(patch.contentReadMode ?? '').trim().toLowerCase() === 'exclude_tags' ? 'exclude_tags' : 'include_tags';
     for (const key of ['customApiUrl', 'customApiKey', 'customApiModel']) {
         if (key in patch) next[key] = String(patch[key] ?? '').trim();
     }
@@ -238,12 +246,15 @@ export function updateSceneWorldSettings(patch) {
         const tags = normalizeContentTags(patch.contentTags);
         next.contentTags = tags.length ? tags : ['content'];
     }
+    if ('excludedContentTags' in patch) {
+        next.excludedContentTags = normalizeContentTags(patch.excludedContentTags);
+    }
 
     // 清理旧字段，避免新旧字号语义并存。
     for (const key of [
         'includeCharacterBase', 'includeCharacterWorldInfo', 'includeChatWorldInfo', 'includeGlobalWorldInfo',
         'characterBaseMaxChars', 'worldBookSelection', 'simulationWorldBookSelection', 'observationWorldBookSelection',
-        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale', 'uiFontUrl', 'uiFontFamily', 'glassEffect', 'modelContextMode', 'modelContextTokens',
+        'worldInfoMaxChars', 'useBaiBaiBook', 'uiFontAdjust', 'uiFontScale', 'uiFontUrl', 'uiFontFamily', 'glassEffect', 'modelContextMode', 'modelContextTokens', 'contentFallbackToWholeMessage',
     ]) delete next[key];
 
     extension_settings.sceneworld = next;
@@ -251,6 +262,7 @@ export function updateSceneWorldSettings(patch) {
     return {
         ...next,
         contentTags: [...next.contentTags],
+        excludedContentTags: [...next.excludedContentTags],
         simulationWorldEntrySelection: { ...next.simulationWorldEntrySelection },
         observationWorldEntrySelection: { ...next.observationWorldEntrySelection },
         apiPresets: next.apiPresets.map(item => ({ ...item })),
